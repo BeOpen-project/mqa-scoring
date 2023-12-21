@@ -820,6 +820,10 @@ def get_results(id: str):
   except Exception as e:
     print(traceback.format_exc())
     raise HTTPException(status_code=500, detail="Internal Server Error" + str(e))
+  
+@app.get("/mqa/version")
+def get_version():
+  return {"version": "1.0.0"}
 
 # if __name__ == "__main__":
 #   main()
