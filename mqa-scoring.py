@@ -719,7 +719,7 @@ async def useCaseConfigurator(options: Options, background_tasks: BackgroundTask
 
 
       background_tasks.add_task(main, xml, pre, dataset_start, dataset_finish, configuration_inputs.url, collection_name, id)
-      if id == None:
+      if configuration_inputs.id != None:
         return {"message": "The request has been accepted"}
       else:
         return {"message": "The request has been accepted", "id" : id}
@@ -764,7 +764,6 @@ async def useCaseConfigurator(background_tasks: BackgroundTasks, file: UploadFil
         dbname = get_database()
         collection_name = dbname["mqa"]
         now = datetime.now()
-        print(id)
         if id == None:
           if xml.rfind('<dcat:Catalog ') != -1:
             type = "catalogue"
@@ -777,26 +776,26 @@ async def useCaseConfigurator(background_tasks: BackgroundTasks, file: UploadFil
             "history": []
           }
           inserted_item = collection_name.insert_one(new_item)
-          id = str(inserted_item.inserted_id)
+          new_id = str(inserted_item.inserted_id)
         else:
-          id = id
-          type = collection_name.find_one({'_id': ObjectId(id)})["type"]
+          new_id = id
+          type = collection_name.find_one({'_id': ObjectId(new_id)})["type"]
           if xml.rfind('<dcat:Catalog ') != -1 and type == "dataset":
             return HTTPException(status_code=400, detail="The file is a catalogue, but the id is from a dataset")
           elif xml.rfind('<dcat:Catalog ') == -1 and type == "catalogue":
             return HTTPException(status_code=400, detail="The file is a dataset, but the id is from a catalogue")
-          collection_name.update_one({'_id': ObjectId(id)},  {'$set': {"last_modified": now.strftime("%d/%m/%Y %H:%M:%S")}})
+          collection_name.update_one({'_id': ObjectId(new_id)},  {'$set': {"last_modified": now.strftime("%d/%m/%Y %H:%M:%S")}})
       except:
         print(traceback.format_exc())
-        id = None
+        new_id = None
         collection_name = None
 
 
-      background_tasks.add_task(main, xml, pre, dataset_start, dataset_finish, url, collection_name, id)
-      if id == None:
+      background_tasks.add_task(main, xml, pre, dataset_start, dataset_finish, url, collection_name, new_id)
+      if id != None:
         return {"message": "The request has been accepted"}
       else:
-        return {"message": "The request has been accepted", "id" : id}
+        return {"message": "The request has been accepted", "id" : new_id}
     except Exception as e:
         print(traceback.format_exc())
         raise HTTPException(status_code=500, detail="Internal Server Error" + str(e))
