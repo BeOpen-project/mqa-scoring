@@ -628,7 +628,9 @@ def main(xml, pre, dataset_start, dataset_finish, url, collection_name, id):
     res = requests.post(url, json.dumps(response, indent=4, cls=EmployeeEncoder))
     
     print("Status Code", res.status_code)
-  return res
+    return res
+  else:
+    return response
 
 
 app = FastAPI(title="BeOpen mqa-scoring")
