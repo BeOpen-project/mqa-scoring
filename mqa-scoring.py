@@ -481,6 +481,7 @@ def main(xml, pre, dataset_start, dataset_finish, url, collection_name, id):
     response.rights = 0
     response.byteSize = 0
     response.shacl_validation = 0
+    response.score = {}
 
     countDataset = 0
     countDistr = 0
@@ -559,10 +560,6 @@ def main(xml, pre, dataset_start, dataset_finish, url, collection_name, id):
       if el in range(200, 399):
         response.accessURL_Perc += round(tempArrayAccessUrl.count(el) / countDistr * 100)
       response.accessURL.append({"code": el, "percentage": round(tempArrayAccessUrl.count(el) / countDistr * 100)})
-    # response.downloadURLResponseCode = round(most_frequent(tempArrayDownloadUrl))
-    # response.downloadURLResponseCode_Perc = round(tempArrayDownloadUrl.count(response.downloadURLResponseCode) / countDistr * 100)
-    # response.accessURL = round(most_frequent(tempArrayAccessUrl))
-    # response.accessURL_Perc = round(tempArrayAccessUrl.count(response.accessURL) / countDistr * 100)
     response.format = round(response.format / countDistr * 100)
     response.formatMachineReadable = round(response.formatMachineReadable / countDistr * 100)
     response.formatNonProprietary = round(response.formatNonProprietary / countDistr * 100)
@@ -580,38 +577,42 @@ def main(xml, pre, dataset_start, dataset_finish, url, collection_name, id):
     response.temporal = round(response.temporal / countDataset * 100)
     response.shacl_validation = round(response.shacl_validation / countDataset * 100)
 
+
+    weights = Object()
     # weights
-    response.keyword_Weight = math.ceil(30 / 100 * response.keyword)
-    response.theme_Weight = math.ceil(30 / 100 * response.theme)
-    response.spatial_Weight = math.ceil(20 / 100 * response.spatial)
-    response.temporal_Weight = math.ceil(20 / 100 * response.temporal)
-    response.contactPoint_Weight = math.ceil(20 / 100 * response.contactPoint)
-    response.publisher_Weight = math.ceil(10 / 100 * response.publisher)
-    response.accessRights_Weight = math.ceil(10 / 100 * response.accessRights)
-    response.accessRightsVocabulary_Weight = math.ceil(5 / 100 * response.accessRightsVocabulary)
-    response.accessURL_Weight = math.ceil(50 / 100 * response.accessURL_Perc)
-    response.downloadURL_Weight = math.ceil(20 / 100 * response.downloadURL)
-    response.downloadURLResponseCode_Weight = math.ceil(30 / 100 * response.downloadURLResponseCode_Perc)
-    response.format_Weight = math.ceil(20 / 100 * response.format)
-    response.dctFormat_dcatMediaType_Weight = math.ceil(10 / 100 * response.dctFormat_dcatMediaType)
-    response.formatMachineReadable_Weight = math.ceil(20 / 100 * response.formatMachineReadable)
-    response.formatNonProprietary_Weight = math.ceil(20 / 100 * response.formatNonProprietary)
-    response.license_Weight = math.ceil(20 / 100 * response.license)
-    response.licenseVocabulary_Weight = math.ceil(10 / 100 * response.licenseVocabulary)
-    response.mediaType_Weight = math.ceil(10 / 100 * response.mediaType)
-    response.rights_Weight = math.ceil(5 / 100 * response.rights)
-    response.byteSize_Weight = math.ceil(5 / 100 * response.byteSize)
-    response.issued_Weight = math.ceil(5 / 100 * response.issued)
-    response.modified_Weight = math.ceil(5 / 100 * response.modified)
-    response.shacl_validation_Weight = math.ceil(30 / 100 * response.shacl_validation)
+    weights.keyword_Weight = math.ceil(30 / 100 * response.keyword)
+    weights.theme_Weight = math.ceil(30 / 100 * response.theme)
+    weights.spatial_Weight = math.ceil(20 / 100 * response.spatial)
+    weights.temporal_Weight = math.ceil(20 / 100 * response.temporal)
+    weights.contactPoint_Weight = math.ceil(20 / 100 * response.contactPoint)
+    weights.publisher_Weight = math.ceil(10 / 100 * response.publisher)
+    weights.accessRights_Weight = math.ceil(10 / 100 * response.accessRights)
+    weights.accessRightsVocabulary_Weight = math.ceil(5 / 100 * response.accessRightsVocabulary)
+    weights.accessURL_Weight = math.ceil(50 / 100 * response.accessURL_Perc)
+    weights.downloadURL_Weight = math.ceil(20 / 100 * response.downloadURL)
+    weights.downloadURLResponseCode_Weight = math.ceil(30 / 100 * response.downloadURLResponseCode_Perc)
+    weights.format_Weight = math.ceil(20 / 100 * response.format)
+    weights.dctFormat_dcatMediaType_Weight = math.ceil(10 / 100 * response.dctFormat_dcatMediaType)
+    weights.formatMachineReadable_Weight = math.ceil(20 / 100 * response.formatMachineReadable)
+    weights.formatNonProprietary_Weight = math.ceil(20 / 100 * response.formatNonProprietary)
+    weights.license_Weight = math.ceil(20 / 100 * response.license)
+    weights.licenseVocabulary_Weight = math.ceil(10 / 100 * response.licenseVocabulary)
+    weights.mediaType_Weight = math.ceil(10 / 100 * response.mediaType)
+    weights.rights_Weight = math.ceil(5 / 100 * response.rights)
+    weights.byteSize_Weight = math.ceil(5 / 100 * response.byteSize)
+    weights.issued_Weight = math.ceil(5 / 100 * response.issued)
+    weights.modified_Weight = math.ceil(5 / 100 * response.modified)
+    weights.shacl_validation_Weight = math.ceil(30 / 100 * response.shacl_validation)
 
-    response.findability = response.keyword_Weight + response.theme_Weight + response.spatial_Weight + response.temporal_Weight
-    response.accessibility = response.accessURL_Weight + response.downloadURL_Weight + response.downloadURLResponseCode_Weight
-    response.interoperability = response.format_Weight + response.dctFormat_dcatMediaType_Weight + response.formatMachineReadable_Weight + response.formatNonProprietary_Weight + response.mediaType_Weight + response.shacl_validation_Weight
-    response.reusability = response.license_Weight + response.licenseVocabulary_Weight + response.contactPoint_Weight + response.publisher_Weight + response.accessRights_Weight + response.accessRightsVocabulary_Weight 
-    response.contextuality = response.rights_Weight + response.byteSize_Weight + response.issued_Weight + response.modified_Weight
+    weights.findability = weights.keyword_Weight + weights.theme_Weight + weights.spatial_Weight + weights.temporal_Weight
+    weights.accessibility = weights.accessURL_Weight + weights.downloadURL_Weight + weights.downloadURLResponseCode_Weight
+    weights.interoperability = weights.format_Weight + weights.dctFormat_dcatMediaType_Weight + weights.formatMachineReadable_Weight + weights.formatNonProprietary_Weight + weights.mediaType_Weight + weights.shacl_validation_Weight
+    weights.reusability = weights.license_Weight + weights.licenseVocabulary_Weight + weights.contactPoint_Weight + weights.publisher_Weight + weights.accessRights_Weight + weights.accessRightsVocabulary_Weight 
+    weights.contextuality = weights.rights_Weight + weights.byteSize_Weight + weights.issued_Weight + weights.modified_Weight
 
-    response.overall = response.findability + response.accessibility + response.interoperability + response.reusability + response.contextuality
+    weights.overall = weights.findability + weights.accessibility + weights.interoperability + weights.reusability + weights.contextuality
+
+    response.score = weights.__dict__
 
 
   class EmployeeEncoder(json.JSONEncoder): 
@@ -650,7 +651,7 @@ class Options(BaseModel):
     url: Optional[str] = None
     id: Optional[str] = None
 
-@app.post("/mqa")
+@app.post("/submit")
 async def useCaseConfigurator(options: Options, background_tasks: BackgroundTasks):
     try:
         configuration_inputs = options
@@ -727,7 +728,7 @@ async def useCaseConfigurator(options: Options, background_tasks: BackgroundTask
         print(traceback.format_exc())
         raise HTTPException(status_code=500, detail="Internal Server Error" + str(e))
     
-@app.post("/mqa/file")
+@app.post("/submit/file")
 async def useCaseConfigurator(background_tasks: BackgroundTasks, file: UploadFile = File(...), url: Optional[str] = None, id: Optional[str] = None):
   try:
     xml = file.file.read()
@@ -803,7 +804,7 @@ async def useCaseConfigurator(background_tasks: BackgroundTasks, file: UploadFil
       print(traceback.format_exc())
       return {"message": "There was an error uploading the file"}
   
-@app.get("/mqa/get/catalogue/{id}")
+@app.get("/get/catalogue/{id}")
 def get_results(id: str):
   if(len(id) != 24):
     return HTTPException(status_code=400, detail="Id not valid")
@@ -820,7 +821,66 @@ def get_results(id: str):
     print(traceback.format_exc())
     raise HTTPException(status_code=500, detail="Internal Server Error" + str(e))
   
-@app.get("/mqa/version")
+
+class Options(BaseModel):
+    parameters: str
+
+@app.post("/get/catalogue/{id}")
+def get_results_spec(id: str, options: Options ):
+  parameters = options.parameters
+  
+  if(len(id) != 24):
+    return HTTPException(status_code=400, detail="Id not valid")
+  try:
+    dbname = get_database()
+    collection_name = dbname["mqa"]
+    result = collection_name.find_one({'_id': ObjectId(id)})
+    if result == None:
+      return HTTPException(status_code=404, detail="Not Found")
+    else:
+      res = json.loads(dumps(result, indent = 4)).get("history")
+      if parameters == "":
+        return res[len(res)-1]
+      else:
+        parameters = parameters.replace(" ", "")
+        attributes = parameters.split(",")
+        class Object(object):
+          pass
+        response = Object()
+        response.created_at = res[len(res)-1]["created_at"]
+        response.catalogue = Object()
+        if "datasets" in parameters and "distribution" not in parameters:
+          response.catalogue.datasets = []
+          for dataset in res[len(res)-1]["catalogue"]["datasets"]:
+            response.catalogue.datasets.append({})
+        if "distribution" in parameters:
+          response.catalogue.datasets = []
+          for dataset in res[len(res)-1]["catalogue"]["datasets"]:
+            response.catalogue.datasets.append({"distributions": []})
+            for distribution in dataset["distributions"]:
+              response.catalogue.datasets[len(response.catalogue.datasets)-1]["distributions"].append({})
+        
+        for attr in attributes:
+          finder = attr.split(".")
+          if len(finder) == 1:
+            response.catalogue.__setattr__(finder[0], res[len(res)-1]["catalogue"][finder[0]])
+          elif len(finder) == 2:
+            datasets = res[len(res)-1].get("catalogue").get("datasets")
+            for index, dataset in enumerate(datasets):
+              response.catalogue.datasets[index][finder[1]] = dataset[finder[1]]
+          elif len(finder) == 3:
+            datasets = res[len(res)-1].get("catalogue").get("datasets")
+            for i, dataset in enumerate(datasets):
+              distributions = dataset.get("distributions")
+              for index, distribution in enumerate(distributions):
+                response.catalogue.datasets[i]["distributions"][index][finder[2]] = distribution[finder[2]]
+
+        return response
+  except Exception as e:
+    print(traceback.format_exc())
+    raise HTTPException(status_code=500, detail="Internal Server Error" + str(e))
+  
+@app.get("/version")
 def get_version():
   return {"version": "1.0.0"}
 
