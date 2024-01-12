@@ -23,6 +23,6 @@ services:
       - MONGO_INITDB_DATABASE=admin
       - MONGO_INITDB_ROOT_PASSWORD=BeOpen2023!
     ports:
-      - '127.0.0.1:27017:27017'
+      - '127.0.0.1:27019:27017'
     volumes: 
       - ./data:/data/db
