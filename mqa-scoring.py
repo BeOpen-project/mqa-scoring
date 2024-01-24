@@ -428,33 +428,31 @@ def find_nth(haystack: str, needle: str, n: int) -> int:
     return start
 
 def main(xml, pre, dataset_start, dataset_finish, url, collection_name, id):
-  class Object(object):
-    pass
-  response = Object()
-  response.datasets = []
-  response.title = ''
 
-  dt_copy = xml
-  
-  for index, item in enumerate(dataset_start):
-    dataset = pre + xml[dataset_start[index]:dataset_finish[index]+15] + '</rdf:RDF>'
-    result = dataset_calc(dataset, pre)
-    response.datasets.append(result)
-    dataset_Tag = xml[dataset_start[index]:dataset_finish[index]+15]
-    dt_copy = dt_copy.replace(dataset_Tag, '')
-  
-
-  g = Graph()
-  g.parse(data = dt_copy)
-
-  for sub, pred, obj in g:
-    met = str_metric(pred, g)
-    if met == "dct:title":
-      response.title = obj
-      break
-
-  
   if xml.rfind('<dcat:Catalog ') != -1:
+
+    class Object(object):
+      pass
+    response = Object()
+    response.datasets = []
+    response.title = ''
+
+    dt_copy = xml
+    for index, item in enumerate(dataset_start):
+      dataset = pre + xml[dataset_start[index]:dataset_finish[index]+15] + '</rdf:RDF>'
+      result = dataset_calc(dataset, pre)
+      response.datasets.append(result)
+      dataset_Tag = xml[dataset_start[index]:dataset_finish[index]+15]
+      dt_copy = dt_copy.replace(dataset_Tag, '')
+      
+    g = Graph()
+    g.parse(data = dt_copy)
+
+    for sub, pred, obj in g:
+      met = str_metric(pred, g)
+      if met == "dct:title":
+        response.title = obj
+        break
     
     response.issued = 0
     response.modified = 0
@@ -614,15 +612,20 @@ def main(xml, pre, dataset_start, dataset_finish, url, collection_name, id):
 
     response.score = weights.__dict__
 
+  else:
+    response = dataset_calc(xml, pre)
 
   class EmployeeEncoder(json.JSONEncoder): 
         def default(self, o):
             return o.__dict__
         
-  if id != None:
+  if id != None and xml.rfind('<dcat:Catalog ') != -1:
     now = datetime.now()
     collection_name.update_one({'_id': ObjectId(id)},  {'$push': {"history": { "created_at": now.strftime("%d/%m/%Y %H:%M:%S"),"catalogue":json.loads(json.dumps(response, indent=4, cls=EmployeeEncoder)) } }}) 
-  
+  elif id != None and xml.rfind('<dcat:Catalog ') == -1:
+    now = datetime.now()
+    collection_name.update_one({'_id': ObjectId(id)},  {'$push': {"history": { "created_at": now.strftime("%d/%m/%Y %H:%M:%S"),"dataset":json.loads(json.dumps(response, indent=4, cls=EmployeeEncoder)) } }})
+
   if url != None:
     print("Sending request to", url)
     
@@ -647,7 +650,8 @@ app.add_middleware(
 
 # Base model
 class Options(BaseModel):
-    xml: str
+    xml: Optional[str] = None
+    file_url: Optional[str] = None
     url: Optional[str] = None
     id: Optional[str] = None
 
@@ -659,7 +663,13 @@ async def useCaseConfigurator(options: Options, background_tasks: BackgroundTask
         print(traceback.format_exc())
         raise HTTPException(status_code=400, detail="Inputs not valid")
     try:
-      xml = configuration_inputs.xml
+      if configuration_inputs.xml == None and configuration_inputs.file_url == None:
+        return HTTPException(status_code=400, detail="Inputs not valid")
+      elif configuration_inputs.xml != None:
+        xml = configuration_inputs.xml
+      else:
+        url_response = requests.get(configuration_inputs.file_url)
+        xml = url_response.text
 
       dataset_start = [m.start() for m in re.finditer('(?=<dcat:Dataset)', xml)]
       dataset_finish = [m.start() for m in re.finditer('(?=</dcat:Dataset>)', xml)]
@@ -822,12 +832,17 @@ def get_results(id: str):
     raise HTTPException(status_code=500, detail="Internal Server Error" + str(e))
   
 
-class Options(BaseModel):
+class Parameters(BaseModel):
     parameters: str
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
 
 @app.post("/get/catalogue/{id}")
-def get_results_spec(id: str, options: Options ):
+def get_results_spec(id: str, options: Parameters ):
   parameters = options.parameters
+  start_date = options.start_date
+  end_date = options.end_date
+
   
   if(len(id) != 24):
     return HTTPException(status_code=400, detail="Id not valid")
@@ -836,7 +851,7 @@ def get_results_spec(id: str, options: Options ):
     collection_name = dbname["mqa"]
     result = collection_name.find_one({'_id': ObjectId(id)})
     if result == None:
-      return HTTPException(status_code=404, detail="Not Found")
+      return HTTPException(status_code=404, detail="Id not found")
     else:
       res = json.loads(dumps(result, indent = 4)).get("history")
       if parameters == "":
@@ -847,34 +862,108 @@ def get_results_spec(id: str, options: Options ):
         class Object(object):
           pass
         response = Object()
-        response.created_at = res[len(res)-1]["created_at"]
-        response.catalogue = Object()
-        if "datasets" in parameters and "distribution" not in parameters:
-          response.catalogue.datasets = []
-          for dataset in res[len(res)-1]["catalogue"]["datasets"]:
-            response.catalogue.datasets.append({})
-        if "distribution" in parameters:
-          response.catalogue.datasets = []
-          for dataset in res[len(res)-1]["catalogue"]["datasets"]:
-            response.catalogue.datasets.append({"distributions": []})
-            for distribution in dataset["distributions"]:
-              response.catalogue.datasets[len(response.catalogue.datasets)-1]["distributions"].append({})
-        
-        for attr in attributes:
-          finder = attr.split(".")
-          if len(finder) == 1:
-            response.catalogue.__setattr__(finder[0], res[len(res)-1]["catalogue"][finder[0]])
-          elif len(finder) == 2:
-            datasets = res[len(res)-1].get("catalogue").get("datasets")
-            for index, dataset in enumerate(datasets):
-              response.catalogue.datasets[index][finder[1]] = dataset[finder[1]]
-          elif len(finder) == 3:
-            datasets = res[len(res)-1].get("catalogue").get("datasets")
-            for i, dataset in enumerate(datasets):
-              distributions = dataset.get("distributions")
-              for index, distribution in enumerate(distributions):
-                response.catalogue.datasets[i]["distributions"][index][finder[2]] = distribution[finder[2]]
-
+        response.catalogue = []
+        if start_date != None and end_date != None:
+          datetime_start = datetime.strptime(start_date, '%d/%m/%Y')
+          datetime_end = datetime.strptime(end_date, '%d/%m/%Y')
+        elif start_date != None and end_date == None:
+          datetime_start = datetime.strptime(start_date, '%d/%m/%Y')
+        elif start_date == None and end_date != None:
+          return HTTPException(status_code=404, detail="Invalid date range")
+        counter = 0
+        for i in range(len(res)):
+          date_to_compare = datetime.strptime(res[i]["created_at"][:res[i]["created_at"].rfind(' ')], '%d/%m/%Y')
+          if start_date != None and end_date != None:
+            if date_to_compare >= datetime_start and date_to_compare <= datetime_end:
+              counter += 1
+              response.catalogue.append({})
+              response.catalogue[counter-1]['created_at'] = res[i]["created_at"]
+              if "datasets" in parameters and "distribution" not in parameters:
+                response.catalogue[counter-1]["datasets"] = []
+                for dataset in res[i]["catalogue"]["datasets"]:
+                  response.catalogue[counter-1]["datasets"].append({})
+              if "distribution" in parameters:
+                response.catalogue[counter-1]["datasets"] = []
+                for dataset in res[i]["catalogue"]["datasets"]:
+                  response.catalogue[counter-1]["datasets"].append({"distributions": []})
+                  for distribution in dataset["distributions"]:
+                    response.catalogue[counter-1]["datasets"][len(response.catalogue[counter-1]["datasets"])-1]["distributions"].append({})
+              
+              for attr in attributes:
+                finder = attr.split(".")
+                if len(finder) == 1:
+                  response.catalogue[counter-1][finder[0]] = res[i]["catalogue"][finder[0]]
+                elif len(finder) == 2:
+                  datasets = res[i].get("catalogue").get("datasets")
+                  for index, dataset in enumerate(datasets):
+                    response.catalogue[counter-1]["datasets"][index][finder[1]] = dataset[finder[1]]
+                elif len(finder) == 3:
+                  datasets = res[i].get("catalogue").get("datasets")
+                  for i, dataset in enumerate(datasets):
+                    distributions = dataset.get("distributions")
+                    for index, distribution in enumerate(distributions):
+                      response.catalogue[counter-1]["datasets"][i]["distributions"][index][finder[2]] = distribution[finder[2]]
+          elif start_date != None and end_date == None :
+            if date_to_compare >= datetime_start:
+              counter += 1
+              response.catalogue.append({})
+              response.catalogue[counter-1]['created_at'] = res[i]["created_at"]
+              if "datasets" in parameters and "distribution" not in parameters:
+                response.catalogue[counter-1]["datasets"] = []
+                for dataset in res[i]["catalogue"]["datasets"]:
+                  response.catalogue[counter-1]["datasets"].append({})
+              if "distribution" in parameters:
+                response.catalogue[counter-1]["datasets"] = []
+                for dataset in res[i]["catalogue"]["datasets"]:
+                  response.catalogue[counter-1]["datasets"].append({"distributions": []})
+                  for distribution in dataset["distributions"]:
+                    response.catalogue[counter-1]["datasets"][len(response.catalogue[counter-1]["datasets"])-1]["distributions"].append({})
+              
+              for attr in attributes:
+                finder = attr.split(".")
+                if len(finder) == 1:
+                  response.catalogue[counter-1][finder[0]] = res[i]["catalogue"][finder[0]]
+                elif len(finder) == 2:
+                  datasets = res[i].get("catalogue").get("datasets")
+                  for index, dataset in enumerate(datasets):
+                    response.catalogue[counter-1]["datasets"][index][finder[1]] = dataset[finder[1]]
+                elif len(finder) == 3:
+                  datasets = res[i].get("catalogue").get("datasets")
+                  for i, dataset in enumerate(datasets):
+                    distributions = dataset.get("distributions")
+                    for index, distribution in enumerate(distributions):
+                      response.catalogue[counter-1]["datasets"][i]["distributions"][index][finder[2]] = distribution[finder[2]]
+          else:
+            counter += 1
+            response.catalogue.append({})
+            response.catalogue[counter-1]['created_at'] = res[i]["created_at"]
+            if "datasets" in parameters and "distribution" not in parameters:
+              response.catalogue[counter-1]["datasets"] = []
+              for dataset in res[i]["catalogue"]["datasets"]:
+                response.catalogue[counter-1]["datasets"].append({})
+            if "distribution" in parameters:
+              response.catalogue[counter-1]["datasets"] = []
+              for dataset in res[i]["catalogue"]["datasets"]:
+                response.catalogue[counter-1]["datasets"].append({"distributions": []})
+                for distribution in dataset["distributions"]:
+                  response.catalogue[counter-1]["datasets"][len(response.catalogue[counter-1]["datasets"])-1]["distributions"].append({})
+            
+            for attr in attributes:
+              finder = attr.split(".")
+              if len(finder) == 1:
+                response.catalogue[counter-1][finder[0]] = res[i]["catalogue"][finder[0]]
+              elif len(finder) == 2:
+                datasets = res[i].get("catalogue").get("datasets")
+                for index, dataset in enumerate(datasets):
+                  response.catalogue[counter-1]["datasets"][index][finder[1]] = dataset[finder[1]]
+              elif len(finder) == 3:
+                datasets = res[i].get("catalogue").get("datasets")
+                for i, dataset in enumerate(datasets):
+                  distributions = dataset.get("distributions")
+                  for index, distribution in enumerate(distributions):
+                    response.catalogue[counter-1]["datasets"][i]["distributions"][index][finder[2]] = distribution[finder[2]]
+                
+                
         return response
   except Exception as e:
     print(traceback.format_exc())
