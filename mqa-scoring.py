@@ -826,6 +826,8 @@ def get_results(id: str):
       return HTTPException(status_code=404, detail="Not Found")
     else:
       res = json.loads(dumps(result, indent = 4)).get("history")
+      if(len(res) == 0):
+        return "Empty History"
       return res[len(res)-1]
   except Exception as e:
     print(traceback.format_exc())
@@ -854,6 +856,8 @@ def get_results_spec(id: str, options: Parameters ):
       return HTTPException(status_code=404, detail="Id not found")
     else:
       res = json.loads(dumps(result, indent = 4)).get("history")
+      if(len(res) == 0):
+        return "Empty History"
       if parameters == "":
         return res[len(res)-1]
       else:
