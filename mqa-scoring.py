@@ -1060,7 +1060,7 @@ def get_results_spec(id: str, options: Parameters ):
   # api to get the current version
 @app.get("/version")
 def get_version():
-  return {"version": "1.0.0"}
+  return {"version": "1.1.0"}
 
 # if __name__ == "__main__":
 #   main()
