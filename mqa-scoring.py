@@ -28,6 +28,8 @@ from bson.json_util import dumps
 from datetime import datetime
 from bson.objectid import ObjectId
 
+
+# load the vocabulary
 URL_EDP = 'https://data.europa.eu/api/mqa/shacl/validation/report'
 HEADERS = {'content-type': 'application/rdf+xml'}
 MACH_READ_FILE = os.path.join('edp-vocabularies', 'edp-machine-readable-format.rdf')
@@ -45,6 +47,7 @@ MEDIATYPE_FILE_TEXT = os.path.join('edp-vocabularies', 'edp-mediatype-text.csv')
 MEDIATYPE_FILE_VIDEO = os.path.join('edp-vocabularies', 'edp-mediatype-video.csv')
 MEDIATYPE_FILE_VIDEO = os.path.join('edp-vocabularies', 'edp-mediatype-video.csv')
 
+# converts the metric to a string containing just the name of the metric, ex: dct:title
 def str_metric(val, g):
   valStr=str(val)
   for prefix, ns in g.namespaces():
@@ -52,22 +55,18 @@ def str_metric(val, g):
       metStr = valStr.replace(ns,prefix+":")
       return metStr
 
-def load_edp_vocabulary(file):
+# converts the vocabulary to a graph and get the list of available properties
+    # "application/rdf+xml"
+    # "text/csv"
+def load_edp_vocabulary(file, format):
   g = Graph()
-  g.parse(file, format="application/rdf+xml")
+  g.parse(file, format=format)
   voc = []
   for sub, pred, obj in g:
     voc.append(str(sub))
   return voc
 
-def load_edp_vocabulary_csv(file):
-  g = Graph()
-  g.parse(file, format="text/csv")
-  voc = []
-  for sub, pred, obj in g:
-    voc.append(str(sub))
-  return voc
-
+# send the request to the EDP validator and get the response
 def edp_validator(file: str):
   check = False
   try:
@@ -81,6 +80,7 @@ def edp_validator(file: str):
     check = True
   return check
 
+# check if the response of edp validator contains the property "shacl:conforms" and return the value
 def valResult(d):
   if 'shacl:conforms' in d:
     return d['shacl:conforms']
@@ -90,7 +90,7 @@ def valResult(d):
         if 'shacl:conforms' in i:
           return i['shacl:conforms']
 
-#to avoid some properties on json response are missing
+# create object and add attributes to avoid some properties are missing
 def prepareResponse():
   class Object(object):
     pass
@@ -119,15 +119,17 @@ def distribution_calc(str):
   non_prop_voc = []
   license_voc = []
   
+  # distribution object
   response = prepareResponse()
 
   g = Graph()
   g.parse(data = str)
   
+  # load the vocabulary
   try:
-    mach_read_voc = load_edp_vocabulary(MACH_READ_FILE)
-    non_prop_voc = load_edp_vocabulary(NON_PROP_FILE)
-    license_voc = load_edp_vocabulary(LICENSE_FILE)
+    mach_read_voc = load_edp_vocabulary(MACH_READ_FILE,"application/rdf+xml")
+    non_prop_voc = load_edp_vocabulary(NON_PROP_FILE,"application/rdf+xml")
+    license_voc = load_edp_vocabulary(LICENSE_FILE,"application/rdf+xml")
   except:
     print(traceback.format_exc())
     mach_read_voc = '-1'
@@ -138,6 +140,11 @@ def distribution_calc(str):
   downloadURLResponseCode_List = []
   dctFormat_dcatMediaType_List = []
 
+  # iterate over the properties of the distribution and check if they value are good
+  # some metrics just check if the property is present
+  # others need to check the url or the value of the property
+  # others need to check if they are in the vocabulary
+  # full list can be found https://data.europa.eu/mqa/methodology?locale=en with relative weights
   for sub, pred, obj in g:
     met = str_metric(pred, g)
     if met == "dct:title" and response.title == '':
@@ -159,7 +166,7 @@ def distribution_calc(str):
       except:
         print(traceback.format_exc())
         downloadURLResponseCode_List.append(400)
-
+    # in catalogue formats the property dct:MediaTypeOrExtent is inside an empty dct:format tag. The empty tag must be skipped and not counted
     elif (met == "dct:format" and obj != '' and obj != None) or met == "dct:MediaTypeOrExtent":
       response.format = True
       try:
@@ -200,6 +207,7 @@ def distribution_calc(str):
     elif met == "dcat:mediaType":
       response.mediaType = True
       try:
+        # removes the prefix from the url to check if it is in the vocabulary
         mediatype = obj.replace('http://www.iana.org/assignments/media-types/','')
         mediatype = mediatype.replace('https://www.iana.org/assignments/media-types/','')
         found = False
@@ -246,6 +254,7 @@ def distribution_calc(str):
   response.dctFormat_dcatMediaType = temp
   return response
 
+# get the most frequent value in a list
 def most_frequent(List):
     counter = 0
     if(len(List) == 0):
@@ -268,12 +277,15 @@ def dataset_calc(dataset_str, pre):
 
   accessRights_voc = []
   dt_copy = dataset_str
+  # cut off all the tags on datasets level, and leave just the tags on distribution level to analyze them separately
   distribution_start = [m.start() for m in re.finditer('(?=<dcat:distribution>)', dataset_str)]
   distribution_finish = [m.start() for m in re.finditer('(?=</dcat:distribution>)', dataset_str)]
   if len(distribution_start) == len(distribution_finish):
     for index, item in enumerate(distribution_start):
       distr_tag = dataset_str[distribution_start[index]:distribution_finish[index]+20]
+      # cut off the distribution tag from the dataset string to obtain just the dataset properties to analyze them separately
       dt_copy = dt_copy.replace(distr_tag, '')
+      # variable pre is always required from rdf files and it contains at least the rdf tag: <rdf:RDF ...> and can also contain the xml tag: <?xml version="1.0"?> 
       distribution = pre + '<dcat:Dataset>' + distr_tag + '</dcat:Dataset>' +'</rdf:RDF>'
       response.distributions.append(distribution_calc(distribution))
 
@@ -281,6 +293,7 @@ def dataset_calc(dataset_str, pre):
     g = Graph()
     g.parse(data = dt_copy)
 
+# sets initial values to avoid some properties are missing
     response.title = ''
     response.issued = 0
     response.modified = False
@@ -308,7 +321,7 @@ def dataset_calc(dataset_str, pre):
     response.byteSize = 0
 
     try:
-      accessRights_voc = load_edp_vocabulary(ACCESSRIGHTS_FILE)
+      accessRights_voc = load_edp_vocabulary(ACCESSRIGHTS_FILE,"application/rdf+xml")
     except:
       print(traceback.format_exc())
       accessRights_voc = '-1'
@@ -323,6 +336,12 @@ def dataset_calc(dataset_str, pre):
       print(traceback.format_exc())
       response.shacl_validation = 0
 
+
+  # iterate over the properties of the datasets and check if they value are good
+  # some metrics just check if the property is present
+  # others need to check the url or the value of the property
+  # others need to check if they are in the vocabulary
+  # full list can be found https://data.europa.eu/mqa/methodology?locale=en with relative weights
     for sub, pred, obj in g:
       met = str_metric(pred, g)
       if met == "dct:title" and response.title == '':
@@ -367,6 +386,7 @@ def dataset_calc(dataset_str, pre):
   
     tempArrayDownloadUrl = []
     tempArrayAccessUrl = []
+    # iterate over the distributions metrics to count positive values
     for distr in response.distributions:
       if distr.issued == True:
         response.issued += 1
@@ -392,12 +412,16 @@ def dataset_calc(dataset_str, pre):
         response.mediaType += 1
       if distr.dctFormat_dcatMediaType == True:
         response.dctFormat_dcatMediaType += 1
+      
+      # calculate the percentage of positive values for each metric
     response.issued = round(response.issued / (len(response.distributions)+ 1) * 100)
     response.downloadURL = round(response.downloadURL / len(response.distributions) * 100)
     list_unique = (list(set(tempArrayDownloadUrl)))
+    # create a list for each response code and gives the percentage of each code
     for el in list_unique:
       response.downloadURLResponseCode.append({"code": el, "percentage": round(tempArrayDownloadUrl.count(el) / len(response.distributions) * 100)})
     list_unique = (list(set(tempArrayAccessUrl)))
+    # create a list for each response code and gives the percentage of each code
     for el in list_unique:
       response.accessURL.append({"code": el, "percentage": round(tempArrayAccessUrl.count(el) / len(response.distributions) * 100)})
     response.license = round(response.license / len(response.distributions) * 100)
@@ -410,6 +434,7 @@ def dataset_calc(dataset_str, pre):
     response.mediaType = round(response.mediaType / len(response.distributions) * 100)
     response.dctFormat_dcatMediaType = round(response.dctFormat_dcatMediaType / (len(response.distributions)*2) * 100)
 
+# modified needs to be checked on both dataset and distribution level, but only needs to be true once, so if it is true on dataset level, it is not necessary to check on distribution level
     if(response.modified == False):
       for distr in response.distributions:
         if distr.modified == True:
@@ -420,6 +445,7 @@ def dataset_calc(dataset_str, pre):
     return -1
   return response
 
+# find the nth occurrence of a substring in a string
 def find_nth(haystack: str, needle: str, n: int) -> int:
     start = haystack.find(needle)
     while start >= 0 and n > 1:
@@ -429,6 +455,7 @@ def find_nth(haystack: str, needle: str, n: int) -> int:
 
 def main(xml, pre, dataset_start, dataset_finish, url, collection_name, id):
 
+# if the file is a catalogue, it needs to be analyzed on catalogue level, otherwise it needs to be analyzed just on dataset level
   if xml.rfind('<dcat:Catalog ') != -1:
 
     class Object(object):
@@ -438,22 +465,27 @@ def main(xml, pre, dataset_start, dataset_finish, url, collection_name, id):
     response.title = ''
 
     dt_copy = xml
+    # cut off all the tags on catalogue level, and leave just the tags on dataset level to analyze them separately
     for index, item in enumerate(dataset_start):
+      # variable pre is always required from rdf files and it contains at least the rdf tag: <rdf:RDF ...> and can also contain the xml tag: <?xml version="1.0"?> 
       dataset = pre + xml[dataset_start[index]:dataset_finish[index]+15] + '</rdf:RDF>'
       result = dataset_calc(dataset, pre)
       response.datasets.append(result)
       dataset_Tag = xml[dataset_start[index]:dataset_finish[index]+15]
+      # create a copy with just the catalogue tags to analyze them separately
       dt_copy = dt_copy.replace(dataset_Tag, '')
       
     g = Graph()
     g.parse(data = dt_copy)
 
+# gets the title of the catalogue
     for sub, pred, obj in g:
       met = str_metric(pred, g)
       if met == "dct:title":
         response.title = obj
         break
     
+    # initial values to avoid some properties are missing
     response.issued = 0
     response.modified = 0
     response.keyword = 0
@@ -485,6 +517,7 @@ def main(xml, pre, dataset_start, dataset_finish, url, collection_name, id):
     countDistr = 0
     tempArrayDownloadUrl = []
     tempArrayAccessUrl = []
+    # iterate over the datasets metrics to count positive values
     for dataset in response.datasets:
       countDataset += 1
       if dataset.issuedDataset == True:
@@ -540,7 +573,7 @@ def main(xml, pre, dataset_start, dataset_finish, url, collection_name, id):
         if distr.dctFormat_dcatMediaType == True:
           response.dctFormat_dcatMediaType += 1
 
-    # distribution level percentages
+    # distribution level percentages, based on distributions counts
     response.issued = round(response.issued / (countDataset + countDistr) * 100)
     response.modified = round(response.modified / (countDataset + countDistr) * 100)
     response.byteSize = round(response.byteSize / countDistr * 100)
@@ -564,7 +597,7 @@ def main(xml, pre, dataset_start, dataset_finish, url, collection_name, id):
     response.mediaType = round(response.mediaType / countDistr * 100)
     response.dctFormat_dcatMediaType = round(response.dctFormat_dcatMediaType / (countDistr*2) * 100)
 
-    # dataset level percentages
+    # dataset level percentages, based on datasets counts
     response.accessRightsVocabulary = round(response.accessRightsVocabulary / response.accessRights * 100)
     response.accessRights = round(response.accessRights / countDataset * 100)
     response.contactPoint = round(response.contactPoint / countDataset * 100)
@@ -578,6 +611,7 @@ def main(xml, pre, dataset_start, dataset_finish, url, collection_name, id):
 
     weights = Object()
     # weights
+    # full list of weight can be found https://data.europa.eu/mqa/methodology?locale=en
     weights.keyword_Weight = math.ceil(30 / 100 * response.keyword)
     weights.theme_Weight = math.ceil(30 / 100 * response.theme)
     weights.spatial_Weight = math.ceil(20 / 100 * response.spatial)
@@ -613,25 +647,30 @@ def main(xml, pre, dataset_start, dataset_finish, url, collection_name, id):
     response.score = weights.__dict__
 
   else:
+    # if the file is a dataset, it needs to be analyzed on dataset level
     response = dataset_calc(xml, pre)
 
   class EmployeeEncoder(json.JSONEncoder): 
         def default(self, o):
             return o.__dict__
-        
+
+  # if the file is a catalogue and id is provided, it updates the catalogue history
+  # id should not be none because if user did not provide it, it is generated by the system before calling main function
   if id != None and xml.rfind('<dcat:Catalog ') != -1:
     now = datetime.now()
     collection_name.update_one({'_id': ObjectId(id)},  {'$push': {"history": { "created_at": now.strftime("%d/%m/%Y %H:%M:%S"),"catalogue":json.loads(json.dumps(response, indent=4, cls=EmployeeEncoder)) } }}) 
+  # if the file is a dataset and id is provided, it updates the dataset history
   elif id != None and xml.rfind('<dcat:Catalog ') == -1:
     now = datetime.now()
     collection_name.update_one({'_id': ObjectId(id)},  {'$push': {"history": { "created_at": now.strftime("%d/%m/%Y %H:%M:%S"),"dataset":json.loads(json.dumps(response, indent=4, cls=EmployeeEncoder)) } }})
 
+# if url is provided, it sends the results of analisys to the url
   if url != None:
-    print("Sending request to", url)
+    # print("Sending request to", url)
     
     res = requests.post(url, json.dumps(response, indent=4, cls=EmployeeEncoder))
     
-    print("Status Code", res.status_code)
+    # print("Status Code", res.status_code)
     return res
   else:
     return response
@@ -655,6 +694,10 @@ class Options(BaseModel):
     url: Optional[str] = None
     id: Optional[str] = None
 
+# api to start a new analisys and save on db the results for both case catalogue and dataset
+# accept only rdf files, as string or by url, or by file in the submit/file api
+# can specify the id of the catalogue or dataset if it was already created before
+# the analisys can be long, so it is sent to the user a message that the request has been accepted and if new analisys it also returns the id of the new catalogue or dataset
 @app.post("/submit")
 async def useCaseConfigurator(options: Options, background_tasks: BackgroundTasks):
     try:
@@ -671,6 +714,7 @@ async def useCaseConfigurator(options: Options, background_tasks: BackgroundTask
         url_response = requests.get(configuration_inputs.file_url)
         xml = url_response.text
 
+# sort the datasets and distributions tags to avoid problems with the rdf parser
       dataset_start = [m.start() for m in re.finditer('(?=<dcat:Dataset)', xml)]
       dataset_finish = [m.start() for m in re.finditer('(?=</dcat:Dataset>)', xml)]
       if len(dataset_start) != len(dataset_finish):
@@ -681,12 +725,16 @@ async def useCaseConfigurator(options: Options, background_tasks: BackgroundTask
       if len(distribution_start) != len(distribution_finish):
         return HTTPException(status_code=400, detail="Could not sort distributions")
       
+      # on rdf files the xml tag is not always present, so it is necessary to check if it is present and if it is not
+      # the rdf files is always present, and need to be added for parsing, even with xml tag if present
+      # if xml tag is present, the closing of rdf tag is the second '>' present in the file otherwise it is the first one (closing_index)
       closing_index = 2
       if xml.rfind('<?xml', None, 10) == -1:
         closing_index = 1
 
       pre = xml[:find_nth(xml,'>',closing_index) ] + '>'
 
+      # check if the xml is valid
       test_string = pre + xml[dataset_start[0]:dataset_finish[0]+15] + '</rdf:RDF>'
       try:
         g = Graph()
@@ -701,7 +749,8 @@ async def useCaseConfigurator(options: Options, background_tasks: BackgroundTask
         dbname = get_database()
         collection_name = dbname["mqa"]
         now = datetime.now()
-        print(configuration_inputs.id)
+        # print(configuration_inputs.id)
+        # check if the id is present, if it is not, it creates a new item in the db
         if configuration_inputs.id == None:
           if xml.rfind('<dcat:Catalog ') != -1:
             type = "catalogue"
@@ -717,6 +766,7 @@ async def useCaseConfigurator(options: Options, background_tasks: BackgroundTask
           id = str(inserted_item.inserted_id)
         else:
           id = configuration_inputs.id
+          # take the element in db by id and check if types correspond
           type = collection_name.find_one({'_id': ObjectId(id)})["type"]
           if xml.rfind('<dcat:Catalog ') != -1 and type == "dataset":
             return HTTPException(status_code=400, detail="The file is a catalogue, but the id is from a dataset")
@@ -728,8 +778,9 @@ async def useCaseConfigurator(options: Options, background_tasks: BackgroundTask
         id = None
         collection_name = None
 
-
+      # start the analisys in background
       background_tasks.add_task(main, xml, pre, dataset_start, dataset_finish, configuration_inputs.url, collection_name, id)
+      # send the response to the user
       if configuration_inputs.id != None:
         return {"message": "The request has been accepted"}
       else:
@@ -738,6 +789,11 @@ async def useCaseConfigurator(options: Options, background_tasks: BackgroundTask
         print(traceback.format_exc())
         raise HTTPException(status_code=500, detail="Internal Server Error" + str(e))
     
+
+# api to start a new analisys and save on db the results for both case catalogue and single dataset
+# accept only rdf files as file (format-data). Can be sent as string or by url in the /submit api
+# can specify the id of the catalogue or dataset if it was already created before
+# the analisys can be long, so it is sent to the user a message that the request has been accepted and if new analisys it also returns the id of the new catalogue or dataset
 @app.post("/submit/file")
 async def useCaseConfigurator(background_tasks: BackgroundTasks, file: UploadFile = File(...), url: Optional[str] = None, id: Optional[str] = None):
   try:
@@ -745,6 +801,7 @@ async def useCaseConfigurator(background_tasks: BackgroundTasks, file: UploadFil
     xml = xml.decode("utf-8")
     file.file.close()
     
+# sort the datasets and distributions tags to avoid problems with the rdf parser
     try:
       dataset_start = [m.start() for m in re.finditer('(?=<dcat:Dataset)', xml)]
       dataset_finish = [m.start() for m in re.finditer('(?=</dcat:Dataset>)', xml)]
@@ -756,12 +813,16 @@ async def useCaseConfigurator(background_tasks: BackgroundTasks, file: UploadFil
       if len(distribution_start) != len(distribution_finish):
         return HTTPException(status_code=400, detail="Could not sort distributions")
       
+      # on rdf files the xml tag is not always present, so it is necessary to check if it is present and if it is not
+      # the rdf files is always present, and need to be added for parsing, even with xml tag if present
+      # if xml tag is present, the closing of rdf tag is the second '>' present in the file otherwise it is the first one (closing_index)
       closing_index = 2
       if xml.rfind('<?xml', None, 10) == -1:
         closing_index = 1
 
       pre = xml[:find_nth(xml,'>',closing_index) ] + '>'
 
+      # check if the xml is valid
       test_string = pre + xml[dataset_start[0]:dataset_finish[0]+15] + '</rdf:RDF>'
       try:
         g = Graph()
@@ -772,6 +833,7 @@ async def useCaseConfigurator(background_tasks: BackgroundTasks, file: UploadFil
       
       # Get the database
       try:
+        # check if the id is present, if it is not, it creates a new item in the db
         dbname = get_database()
         collection_name = dbname["mqa"]
         now = datetime.now()
@@ -790,6 +852,7 @@ async def useCaseConfigurator(background_tasks: BackgroundTasks, file: UploadFil
           new_id = str(inserted_item.inserted_id)
         else:
           new_id = id
+          # take the element in db by id and check if types correspond
           type = collection_name.find_one({'_id': ObjectId(new_id)})["type"]
           if xml.rfind('<dcat:Catalog ') != -1 and type == "dataset":
             return HTTPException(status_code=400, detail="The file is a catalogue, but the id is from a dataset")
@@ -802,7 +865,9 @@ async def useCaseConfigurator(background_tasks: BackgroundTasks, file: UploadFil
         collection_name = None
 
 
+      # start the analisys in background
       background_tasks.add_task(main, xml, pre, dataset_start, dataset_finish, url, collection_name, new_id)
+      # send the response to the user
       if id != None:
         return {"message": "The request has been accepted"}
       else:
@@ -814,6 +879,7 @@ async def useCaseConfigurator(background_tasks: BackgroundTasks, file: UploadFil
       print(traceback.format_exc())
       return {"message": "There was an error uploading the file"}
   
+  # api to get the last results of a catalogue or dataset analisys by id
 @app.get("/get/catalogue/{id}")
 def get_results(id: str):
   if(len(id) != 24):
@@ -839,18 +905,21 @@ class Parameters(BaseModel):
     start_date: Optional[str] = None
     end_date: Optional[str] = None
 
+# api to get the selected history results of a catalogue or dataset analisys by id and filter the results by parameters
+# if user want to get a specific result, must provide at least start_date
 @app.post("/get/catalogue/{id}")
 def get_results_spec(id: str, options: Parameters ):
   parameters = options.parameters
   start_date = options.start_date
   end_date = options.end_date
 
-  
+  # check if id is valid
   if(len(id) != 24):
     return HTTPException(status_code=400, detail="Id not valid")
   try:
     dbname = get_database()
     collection_name = dbname["mqa"]
+    # retrieve the element by id
     result = collection_name.find_one({'_id': ObjectId(id)})
     if result == None:
       return HTTPException(status_code=404, detail="Id not found")
@@ -861,12 +930,15 @@ def get_results_spec(id: str, options: Parameters ):
       if parameters == "":
         return res[len(res)-1]
       else:
+        # remove spaces from parameters and split them by comma
         parameters = parameters.replace(" ", "")
         attributes = parameters.split(",")
         class Object(object):
           pass
         response = Object()
         response.catalogue = []
+        # if start_date and end_date are provided, convert them to datetime format
+        # check if only start_date is provided, or both or none. if only end_date is provided, return error
         if start_date != None and end_date != None:
           datetime_start = datetime.strptime(start_date, '%d/%m/%Y')
           datetime_end = datetime.strptime(end_date, '%d/%m/%Y')
@@ -875,9 +947,13 @@ def get_results_spec(id: str, options: Parameters ):
         elif start_date == None and end_date != None:
           return HTTPException(status_code=404, detail="Invalid date range")
         counter = 0
+        # iterate over the history results and filter them by date and parameters
         for i in range(len(res)):
           date_to_compare = datetime.strptime(res[i]["created_at"][:res[i]["created_at"].rfind(' ')], '%d/%m/%Y')
+          # case with date range
           if start_date != None and end_date != None:
+            # filter by date
+            # when the date is in the range, it adds the result to the response, but first check if in parameters there is at least one "datasets" and/or "distribution" and add the empty list to the response for later use
             if date_to_compare >= datetime_start and date_to_compare <= datetime_end:
               counter += 1
               response.catalogue.append({})
@@ -892,7 +968,8 @@ def get_results_spec(id: str, options: Parameters ):
                   response.catalogue[counter-1]["datasets"].append({"distributions": []})
                   for distribution in dataset["distributions"]:
                     response.catalogue[counter-1]["datasets"][len(response.catalogue[counter-1]["datasets"])-1]["distributions"].append({})
-              
+              # filter by parameters
+              # If at distribution level, the parameter are for example: datasets.distributions.title, so it split the string and check the length
               for attr in attributes:
                 finder = attr.split(".")
                 if len(finder) == 1:
@@ -907,7 +984,10 @@ def get_results_spec(id: str, options: Parameters ):
                     distributions = dataset.get("distributions")
                     for index, distribution in enumerate(distributions):
                       response.catalogue[counter-1]["datasets"][i]["distributions"][index][finder[2]] = distribution[finder[2]]
+          # case with only start_date
           elif start_date != None and end_date == None :
+            # filter by date
+            # when the date is in the range, it adds the result to the response, but first check if in parameters there is at least one "datasets" and/or "distribution" and add the empty list to the response for later use
             if date_to_compare >= datetime_start:
               counter += 1
               response.catalogue.append({})
@@ -922,7 +1002,8 @@ def get_results_spec(id: str, options: Parameters ):
                   response.catalogue[counter-1]["datasets"].append({"distributions": []})
                   for distribution in dataset["distributions"]:
                     response.catalogue[counter-1]["datasets"][len(response.catalogue[counter-1]["datasets"])-1]["distributions"].append({})
-              
+              # filter by parameters
+              # If at distribution level, the parameter are for example: datasets.distributions.title, so it split the string and check the length
               for attr in attributes:
                 finder = attr.split(".")
                 if len(finder) == 1:
@@ -937,7 +1018,9 @@ def get_results_spec(id: str, options: Parameters ):
                     distributions = dataset.get("distributions")
                     for index, distribution in enumerate(distributions):
                       response.catalogue[counter-1]["datasets"][i]["distributions"][index][finder[2]] = distribution[finder[2]]
+          # case with no date range
           else:
+            # check if in parameters there is at least one "datasets" and/or "distribution" and add the empty list to the response for later use
             counter += 1
             response.catalogue.append({})
             response.catalogue[counter-1]['created_at'] = res[i]["created_at"]
@@ -951,7 +1034,8 @@ def get_results_spec(id: str, options: Parameters ):
                 response.catalogue[counter-1]["datasets"].append({"distributions": []})
                 for distribution in dataset["distributions"]:
                   response.catalogue[counter-1]["datasets"][len(response.catalogue[counter-1]["datasets"])-1]["distributions"].append({})
-            
+            # filter by parameters
+            # If at distribution level, the parameter are for example: datasets.distributions.title, so it split the string and check the length
             for attr in attributes:
               finder = attr.split(".")
               if len(finder) == 1:
@@ -973,6 +1057,7 @@ def get_results_spec(id: str, options: Parameters ):
     print(traceback.format_exc())
     raise HTTPException(status_code=500, detail="Internal Server Error" + str(e))
   
+  # api to get the current version
 @app.get("/version")
 def get_version():
   return {"version": "1.0.0"}
