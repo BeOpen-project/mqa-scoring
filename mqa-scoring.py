@@ -1198,7 +1198,7 @@ def get_all():
 # api to get the current version
 @app.get("/version")
 def get_version():
-  return {"version": "1.1.0"}
+  return {"version": "1.1.2"}
 
 # if __name__ == "__main__":
 #   main()
