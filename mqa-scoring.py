@@ -736,13 +736,37 @@ async def useCaseConfigurator(options: Options, background_tasks: BackgroundTask
 
       # check if the xml is valid
       test_string = pre + xml[dataset_start[0]:dataset_finish[0]+15] + '</rdf:RDF>'
+      dt_copy = xml
+
+      if xml.rfind('<dcat:Catalog ') != -1:
+        # cut off all the tags on catalogue level, and leave just the tags on dataset level to analyze them separately
+        for index, item in enumerate(dataset_start):
+          dataset_Tag = xml[dataset_start[index]:dataset_finish[index]+15]
+          # create a copy with just the catalogue tags to analyze them separately
+          dt_copy = dt_copy.replace(dataset_Tag, '')
+      else:
+        # cut off all the tags on datasets level, and leave just the tags on distribution level to analyze them separately
+        for index, item in enumerate(dataset_start):
+          distr_tag = xml[distribution_start[index]:distribution_finish[index]+20]
+          # cut off the distribution tag from the dataset string to obtain just the dataset properties to analyze them separately
+          dt_copy = dt_copy.replace(distr_tag, '')
+        dt_copy = dt_copy.replace(dt_copy[dt_copy.rfind('<adms:identifier>'):dt_copy.rfind('</adms:identifier>')+18], '')
       try:
         g = Graph()
         g.parse(data = test_string)
+        g = Graph()
+        g.parse(data = dt_copy)
       except:
         print(traceback.format_exc())
         return HTTPException(status_code=400, detail="Could not parse xml")
       
+      title = ""
+      # gets the title of the catalogue
+      for sub, pred, obj in g:
+        met = str_metric(pred, g)
+        if met == "dct:title":
+          title = obj
+          break
 
       # Get the database
       try:
@@ -760,6 +784,7 @@ async def useCaseConfigurator(options: Options, background_tasks: BackgroundTask
             "creation_date" : now.strftime("%d/%m/%Y %H:%M:%S"),
             "last_modified" : now.strftime("%d/%m/%Y %H:%M:%S"),
             "type": type,
+            "title": title,
             "history": []
           }
           inserted_item = collection_name.insert_one(new_item)
@@ -824,12 +849,30 @@ async def useCaseConfigurator(background_tasks: BackgroundTasks, file: UploadFil
 
       # check if the xml is valid
       test_string = pre + xml[dataset_start[0]:dataset_finish[0]+15] + '</rdf:RDF>'
+      dt_copy = xml
+
+      # cut off all the tags on catalogue level, and leave just the tags on dataset level to analyze them separately
+      for index, item in enumerate(dataset_start):
+        dataset_Tag = xml[dataset_start[index]:dataset_finish[index]+15]
+        # create a copy with just the catalogue tags to analyze them separately
+        dt_copy = dt_copy.replace(dataset_Tag, '')
+        
       try:
         g = Graph()
         g.parse(data = test_string)
+        g = Graph()
+        g.parse(data = dt_copy)
       except:
         print(traceback.format_exc())
         return HTTPException(status_code=400, detail="Could not parse xml")
+      
+      title = ""
+      # gets the title of the catalogue
+      for sub, pred, obj in g:
+        met = str_metric(pred, g)
+        if met == "dct:title":
+          title = obj
+          break
       
       # Get the database
       try:
@@ -846,6 +889,7 @@ async def useCaseConfigurator(background_tasks: BackgroundTasks, file: UploadFil
             "creation_date" : now.strftime("%d/%m/%Y %H:%M:%S"),
             "last_modified" : now.strftime("%d/%m/%Y %H:%M:%S"),
             "type": type,
+            "title": title,
             "history": []
           }
           inserted_item = collection_name.insert_one(new_item)
@@ -880,7 +924,7 @@ async def useCaseConfigurator(background_tasks: BackgroundTasks, file: UploadFil
       return {"message": "There was an error uploading the file"}
   
   # api to get the last results of a catalogue or dataset analisys by id
-@app.get("/get/catalogue/{id}")
+@app.get("/get/analisys/{id}")
 def get_results(id: str):
   if(len(id) != 24):
     return HTTPException(status_code=400, detail="Id not valid")
@@ -907,7 +951,7 @@ class Parameters(BaseModel):
 
 # api to get the selected history results of a catalogue or dataset analisys by id and filter the results by parameters
 # if user want to get a specific result, must provide at least start_date
-@app.post("/get/catalogue/{id}")
+@app.post("/get/analisys/{id}")
 def get_results_spec(id: str, options: Parameters ):
   parameters = options.parameters
   start_date = options.start_date
@@ -924,7 +968,9 @@ def get_results_spec(id: str, options: Parameters ):
     if result == None:
       return HTTPException(status_code=404, detail="Id not found")
     else:
-      res = json.loads(dumps(result, indent = 4)).get("history")
+      res = json.loads(dumps(result, indent = 4))
+      type = res.get("type")
+      res = res.get("history")
       if(len(res) == 0):
         return "Empty History"
       if parameters == "":
@@ -935,8 +981,8 @@ def get_results_spec(id: str, options: Parameters ):
         attributes = parameters.split(",")
         class Object(object):
           pass
-        response = Object()
-        response.catalogue = []
+        response = {}
+        response[type] = []
         # if start_date and end_date are provided, convert them to datetime format
         # check if only start_date is provided, or both or none. if only end_date is provided, return error
         if start_date != None and end_date != None:
@@ -956,100 +1002,100 @@ def get_results_spec(id: str, options: Parameters ):
             # when the date is in the range, it adds the result to the response, but first check if in parameters there is at least one "datasets" and/or "distribution" and add the empty list to the response for later use
             if date_to_compare >= datetime_start and date_to_compare <= datetime_end:
               counter += 1
-              response.catalogue.append({})
-              response.catalogue[counter-1]['created_at'] = res[i]["created_at"]
+              response[type].append({})
+              response[type][counter-1]['created_at'] = res[i]["created_at"]
               if "datasets" in parameters and "distribution" not in parameters:
-                response.catalogue[counter-1]["datasets"] = []
-                for dataset in res[i]["catalogue"]["datasets"]:
-                  response.catalogue[counter-1]["datasets"].append({})
+                response[type][counter-1]["datasets"] = []
+                for dataset in res[i][type]["datasets"]:
+                  response[type][counter-1]["datasets"].append({})
               if "distribution" in parameters:
-                response.catalogue[counter-1]["datasets"] = []
-                for dataset in res[i]["catalogue"]["datasets"]:
-                  response.catalogue[counter-1]["datasets"].append({"distributions": []})
+                response[type][counter-1]["datasets"] = []
+                for dataset in res[i][type]["datasets"]:
+                  response[type][counter-1]["datasets"].append({"distributions": []})
                   for distribution in dataset["distributions"]:
-                    response.catalogue[counter-1]["datasets"][len(response.catalogue[counter-1]["datasets"])-1]["distributions"].append({})
+                    response[type][counter-1]["datasets"][len(response[type][counter-1]["datasets"])-1]["distributions"].append({})
               # filter by parameters
               # If at distribution level, the parameter are for example: datasets.distributions.title, so it split the string and check the length
               for attr in attributes:
                 finder = attr.split(".")
                 if len(finder) == 1:
-                  response.catalogue[counter-1][finder[0]] = res[i]["catalogue"][finder[0]]
+                  response[type][counter-1][finder[0]] = res[i][type][finder[0]]
                 elif len(finder) == 2:
-                  datasets = res[i].get("catalogue").get("datasets")
+                  datasets = res[i].get(type).get("datasets")
                   for index, dataset in enumerate(datasets):
-                    response.catalogue[counter-1]["datasets"][index][finder[1]] = dataset[finder[1]]
+                    response[type][counter-1]["datasets"][index][finder[1]] = dataset[finder[1]]
                 elif len(finder) == 3:
-                  datasets = res[i].get("catalogue").get("datasets")
+                  datasets = res[i].get(type).get("datasets")
                   for i, dataset in enumerate(datasets):
                     distributions = dataset.get("distributions")
                     for index, distribution in enumerate(distributions):
-                      response.catalogue[counter-1]["datasets"][i]["distributions"][index][finder[2]] = distribution[finder[2]]
+                      response[type][counter-1]["datasets"][i]["distributions"][index][finder[2]] = distribution[finder[2]]
           # case with only start_date
           elif start_date != None and end_date == None :
             # filter by date
             # when the date is in the range, it adds the result to the response, but first check if in parameters there is at least one "datasets" and/or "distribution" and add the empty list to the response for later use
             if date_to_compare >= datetime_start:
               counter += 1
-              response.catalogue.append({})
-              response.catalogue[counter-1]['created_at'] = res[i]["created_at"]
+              response[type].append({})
+              response[type][counter-1]['created_at'] = res[i]["created_at"]
               if "datasets" in parameters and "distribution" not in parameters:
-                response.catalogue[counter-1]["datasets"] = []
-                for dataset in res[i]["catalogue"]["datasets"]:
-                  response.catalogue[counter-1]["datasets"].append({})
+                response[type][counter-1]["datasets"] = []
+                for dataset in res[i][type]["datasets"]:
+                  response[type][counter-1]["datasets"].append({})
               if "distribution" in parameters:
-                response.catalogue[counter-1]["datasets"] = []
-                for dataset in res[i]["catalogue"]["datasets"]:
-                  response.catalogue[counter-1]["datasets"].append({"distributions": []})
+                response[type][counter-1]["datasets"] = []
+                for dataset in res[i][type]["datasets"]:
+                  response[type][counter-1]["datasets"].append({"distributions": []})
                   for distribution in dataset["distributions"]:
-                    response.catalogue[counter-1]["datasets"][len(response.catalogue[counter-1]["datasets"])-1]["distributions"].append({})
+                    response[type][counter-1]["datasets"][len(response[type][counter-1]["datasets"])-1]["distributions"].append({})
               # filter by parameters
               # If at distribution level, the parameter are for example: datasets.distributions.title, so it split the string and check the length
               for attr in attributes:
                 finder = attr.split(".")
                 if len(finder) == 1:
-                  response.catalogue[counter-1][finder[0]] = res[i]["catalogue"][finder[0]]
+                  response[type][counter-1][finder[0]] = res[i][type][finder[0]]
                 elif len(finder) == 2:
-                  datasets = res[i].get("catalogue").get("datasets")
+                  datasets = res[i].get(type).get("datasets")
                   for index, dataset in enumerate(datasets):
-                    response.catalogue[counter-1]["datasets"][index][finder[1]] = dataset[finder[1]]
+                    response[type][counter-1]["datasets"][index][finder[1]] = dataset[finder[1]]
                 elif len(finder) == 3:
-                  datasets = res[i].get("catalogue").get("datasets")
+                  datasets = res[i].get(type).get("datasets")
                   for i, dataset in enumerate(datasets):
                     distributions = dataset.get("distributions")
                     for index, distribution in enumerate(distributions):
-                      response.catalogue[counter-1]["datasets"][i]["distributions"][index][finder[2]] = distribution[finder[2]]
+                      response[type][counter-1]["datasets"][i]["distributions"][index][finder[2]] = distribution[finder[2]]
           # case with no date range
           else:
             # check if in parameters there is at least one "datasets" and/or "distribution" and add the empty list to the response for later use
             counter += 1
-            response.catalogue.append({})
-            response.catalogue[counter-1]['created_at'] = res[i]["created_at"]
+            response[type].append({})
+            response[type][counter-1]['created_at'] = res[i]["created_at"]
             if "datasets" in parameters and "distribution" not in parameters:
-              response.catalogue[counter-1]["datasets"] = []
-              for dataset in res[i]["catalogue"]["datasets"]:
-                response.catalogue[counter-1]["datasets"].append({})
+              response[type][counter-1]["datasets"] = []
+              for dataset in res[i][type]["datasets"]:
+                response[type][counter-1]["datasets"].append({})
             if "distribution" in parameters:
-              response.catalogue[counter-1]["datasets"] = []
-              for dataset in res[i]["catalogue"]["datasets"]:
-                response.catalogue[counter-1]["datasets"].append({"distributions": []})
+              response[type][counter-1]["datasets"] = []
+              for dataset in res[i][type]["datasets"]:
+                response[type][counter-1]["datasets"].append({"distributions": []})
                 for distribution in dataset["distributions"]:
-                  response.catalogue[counter-1]["datasets"][len(response.catalogue[counter-1]["datasets"])-1]["distributions"].append({})
+                  response[type][counter-1]["datasets"][len(response[type][counter-1]["datasets"])-1]["distributions"].append({})
             # filter by parameters
             # If at distribution level, the parameter are for example: datasets.distributions.title, so it split the string and check the length
             for attr in attributes:
               finder = attr.split(".")
               if len(finder) == 1:
-                response.catalogue[counter-1][finder[0]] = res[i]["catalogue"][finder[0]]
+                response[type][counter-1][finder[0]] = res[i][type][finder[0]]
               elif len(finder) == 2:
-                datasets = res[i].get("catalogue").get("datasets")
+                datasets = res[i].get(type).get("datasets")
                 for index, dataset in enumerate(datasets):
-                  response.catalogue[counter-1]["datasets"][index][finder[1]] = dataset[finder[1]]
+                  response[type][counter-1]["datasets"][index][finder[1]] = dataset[finder[1]]
               elif len(finder) == 3:
-                datasets = res[i].get("catalogue").get("datasets")
+                datasets = res[i].get(type).get("datasets")
                 for i, dataset in enumerate(datasets):
                   distributions = dataset.get("distributions")
                   for index, distribution in enumerate(distributions):
-                    response.catalogue[counter-1]["datasets"][i]["distributions"][index][finder[2]] = distribution[finder[2]]
+                    response[type][counter-1]["datasets"][i]["distributions"][index][finder[2]] = distribution[finder[2]]
                 
                 
         return response
@@ -1057,7 +1103,99 @@ def get_results_spec(id: str, options: Parameters ):
     print(traceback.format_exc())
     raise HTTPException(status_code=500, detail="Internal Server Error" + str(e))
   
-  # api to get the current version
+
+  
+  # api to delete a catalogue or dataset by id
+@app.delete("/delete/element/{id}")
+def delete_analisys(id: str):
+
+  # check if id is valid
+  if(len(id) != 24):
+    return HTTPException(status_code=400, detail="Id not valid")
+  try:
+    dbname = get_database()
+    collection_name = dbname["mqa"]
+    # retrieve the element by id
+    result = collection_name.find_one({'_id': ObjectId(id)})
+    if result == None:
+      return HTTPException(status_code=404, detail="Id not found")
+    else:            
+        response = collection_name.delete_one({'_id': ObjectId(id)})
+        if response.deleted_count == 1:
+          return {"message": "Deleted successfully"}
+        else:
+          return {"message": "There was a problem deleting the item"}
+  except Exception as e:
+    print(traceback.format_exc())
+    raise HTTPException(status_code=500, detail="Internal Server Error" + str(e))
+  
+  
+class DeleteParameters(BaseModel):
+    index: Optional[str] = None
+    date: str
+  # api to delete a specifyc analisys from history of a catalogue or dataset by id, and by date and if more than one in the same date, by index
+@app.delete("/delete/analisys/{id}")
+def delete_analisys_spec(id: str, options: DeleteParameters ):
+  index = options.index
+  date = options.date
+
+  # check if id is valid
+  if(len(id) != 24):
+    return HTTPException(status_code=400, detail="Id not valid")
+  try:
+    dbname = get_database()
+    collection_name = dbname["mqa"]
+    # retrieve the element by id
+    result = collection_name.find_one({'_id': ObjectId(id)})
+    if result == None:
+      return HTTPException(status_code=404, detail="Id not found")
+    else:            
+        res = json.loads(dumps(result, indent = 4)).get("history")
+        if(len(res) == 0):
+          return "Empty History"
+        # if index is not provided, it deletes all the analisys of that date
+        if index == None:
+          for i in range(len(res)):
+            if res[i]["created_at"][:res[i]["created_at"].rfind(' ')] == date:
+              del res[i]
+        else:
+          # if index is provided, it deletes the analisys of that date and index
+          for i in range(len(res)):
+            if res[i]["created_at"][:res[i]["created_at"].rfind(' ')] == date and i == int(index):
+              del res[i]
+        response = collection_name.update_one({'_id': ObjectId(id)},  {'$set': {"history": res}})
+        if response.modified_count == 1:
+          return {"message": "Deleted successfully"}
+        else:
+          return {"message": "There was a problem deleting the item"}
+  except Exception as e:
+    print(traceback.format_exc())
+    raise HTTPException(status_code=500, detail="Internal Server Error" + str(e))
+  
+#api to get all id's of catalogues and datasets
+@app.get("/get/all")
+def get_all():
+  try:
+    dbname = get_database()
+    collection_name = dbname["mqa"]
+    result = collection_name.find({})
+    if result == None:
+      return HTTPException(status_code=404, detail="Not Found")
+    else:
+      res = json.loads(dumps(result, indent = 4))
+      response = []
+      for el in res:
+        if el["type"] == "catalogue":
+          response.append({"id": str(el["_id"]["$oid"]), "type": el["type"], "title": el["title"], "creation_date": el["creation_date"]})
+        else:
+           response.append({"id": str(el["_id"]["$oid"]), "type": el["type"], "title": el["title"], "creation_date": el["creation_date"]})
+      return response
+  except Exception as e:
+    print(traceback.format_exc())
+    raise HTTPException(status_code=500, detail="Internal Server Error" + str(e))
+
+
+# api to get the current version
 @app.get("/version")
 def get_version():
   return {"version": "1.1.0"}
