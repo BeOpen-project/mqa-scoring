@@ -797,6 +797,9 @@ async def useCaseConfigurator(options: Options, background_tasks: BackgroundTask
             return HTTPException(status_code=400, detail="The file is a catalogue, but the id is from a dataset")
           elif xml.rfind('<dcat:Catalog ') == -1 and type == "catalogue":
             return HTTPException(status_code=400, detail="The file is a dataset, but the id is from a catalogue")
+          # check if in the db there are already 5 analisys, if yes, it deletes the oldest one
+          if collection_name.find_one({'_id': ObjectId(id)})["history"] != None and len(collection_name.find_one({'_id': ObjectId(id)})["history"]) > 4:
+            collection_name.update_one({'_id': ObjectId(id)},  {'$pop': {"history": -1}})
           collection_name.update_one({'_id': ObjectId(id)},  {'$set': {"last_modified": now.strftime("%d/%m/%Y %H:%M:%S")}})
       except:
         print(traceback.format_exc())
@@ -902,6 +905,10 @@ async def useCaseConfigurator(background_tasks: BackgroundTasks, file: UploadFil
             return HTTPException(status_code=400, detail="The file is a catalogue, but the id is from a dataset")
           elif xml.rfind('<dcat:Catalog ') == -1 and type == "catalogue":
             return HTTPException(status_code=400, detail="The file is a dataset, but the id is from a catalogue")
+          
+          # check if in the db there are already 5 analisys, if yes, it deletes the oldest one
+          if collection_name.find_one({'_id': ObjectId(new_id)})["history"] != None and len(collection_name.find_one({'_id': ObjectId(new_id)})["history"]) > 4:
+            collection_name.update_one({'_id': ObjectId(new_id)},  {'$pop': {"history": -1}})
           collection_name.update_one({'_id': ObjectId(new_id)},  {'$set': {"last_modified": now.strftime("%d/%m/%Y %H:%M:%S")}})
       except:
         print(traceback.format_exc())
