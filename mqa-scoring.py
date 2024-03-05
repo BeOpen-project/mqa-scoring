@@ -27,7 +27,8 @@ from pymongo_get_database import *
 from bson.json_util import dumps
 from datetime import datetime
 from bson.objectid import ObjectId
-
+from requests.adapters import HTTPAdapter
+from requests.packages.urllib3.util.retry import Retry
 
 # load the vocabulary
 URL_EDP = 'https://data.europa.eu/api/mqa/shacl/validation/report'
@@ -712,6 +713,138 @@ async def useCaseConfigurator(options: Options, background_tasks: BackgroundTask
         xml = configuration_inputs.xml
       else:
         url_response = requests.get(configuration_inputs.file_url)
+        xml = url_response.text
+
+# sort the datasets and distributions tags to avoid problems with the rdf parser
+      dataset_start = [m.start() for m in re.finditer('(?=<dcat:Dataset)', xml)]
+      dataset_finish = [m.start() for m in re.finditer('(?=</dcat:Dataset>)', xml)]
+      if len(dataset_start) != len(dataset_finish):
+        return HTTPException(status_code=400, detail="Could not sort datasets")
+      
+      distribution_start = [m.start() for m in re.finditer('(?=<dcat:distribution>)', xml)]
+      distribution_finish = [m.start() for m in re.finditer('(?=</dcat:distribution>)', xml)]
+      if len(distribution_start) != len(distribution_finish):
+        return HTTPException(status_code=400, detail="Could not sort distributions")
+      
+      # on rdf files the xml tag is not always present, so it is necessary to check if it is present and if it is not
+      # the rdf files is always present, and need to be added for parsing, even with xml tag if present
+      # if xml tag is present, the closing of rdf tag is the second '>' present in the file otherwise it is the first one (closing_index)
+      closing_index = 2
+      if xml.rfind('<?xml', None, 10) == -1:
+        closing_index = 1
+
+      pre = xml[:find_nth(xml,'>',closing_index) ] + '>'
+
+      # check if the xml is valid
+      test_string = pre + xml[dataset_start[0]:dataset_finish[0]+15] + '</rdf:RDF>'
+      dt_copy = xml
+
+      if xml.rfind('<dcat:Catalog ') != -1:
+        # cut off all the tags on catalogue level, and leave just the tags on dataset level to analyze them separately
+        for index, item in enumerate(dataset_start):
+          dataset_Tag = xml[dataset_start[index]:dataset_finish[index]+15]
+          # create a copy with just the catalogue tags to analyze them separately
+          dt_copy = dt_copy.replace(dataset_Tag, '')
+      else:
+        # cut off all the tags on datasets level, and leave just the tags on distribution level to analyze them separately
+        for index, item in enumerate(dataset_start):
+          distr_tag = xml[distribution_start[index]:distribution_finish[index]+20]
+          # cut off the distribution tag from the dataset string to obtain just the dataset properties to analyze them separately
+          dt_copy = dt_copy.replace(distr_tag, '')
+        dt_copy = dt_copy.replace(dt_copy[dt_copy.rfind('<adms:identifier>'):dt_copy.rfind('</adms:identifier>')+18], '')
+      try:
+        g = Graph()
+        g.parse(data = test_string)
+        g = Graph()
+        g.parse(data = dt_copy)
+      except:
+        print(traceback.format_exc())
+        return HTTPException(status_code=400, detail="Could not parse xml")
+      
+      title = ""
+      # gets the title of the catalogue
+      for sub, pred, obj in g:
+        met = str_metric(pred, g)
+        if met == "dct:title":
+          title = obj
+          break
+
+      # Get the database
+      try:
+        dbname = get_database()
+        collection_name = dbname["mqa"]
+        now = datetime.now()
+        # print(configuration_inputs.id)
+        # check if the id is present, if it is not, it creates a new item in the db
+        if configuration_inputs.id == None:
+          if xml.rfind('<dcat:Catalog ') != -1:
+            type = "catalogue"
+          else: 
+            type = "dataset"
+          new_item = {
+            "creation_date" : now.strftime("%d/%m/%Y %H:%M:%S"),
+            "last_modified" : now.strftime("%d/%m/%Y %H:%M:%S"),
+            "type": type,
+            "title": title,
+            "history": []
+          }
+          inserted_item = collection_name.insert_one(new_item)
+          id = str(inserted_item.inserted_id)
+        else:
+          id = configuration_inputs.id
+          # take the element in db by id and check if types correspond
+          type = collection_name.find_one({'_id': ObjectId(id)})["type"]
+          if xml.rfind('<dcat:Catalog ') != -1 and type == "dataset":
+            return HTTPException(status_code=400, detail="The file is a catalogue, but the id is from a dataset")
+          elif xml.rfind('<dcat:Catalog ') == -1 and type == "catalogue":
+            return HTTPException(status_code=400, detail="The file is a dataset, but the id is from a catalogue")
+          # check if in the db there are already 5 analisys, if yes, it deletes the oldest one
+          if collection_name.find_one({'_id': ObjectId(id)})["history"] != None and len(collection_name.find_one({'_id': ObjectId(id)})["history"]) > 4:
+            collection_name.update_one({'_id': ObjectId(id)},  {'$pop': {"history": -1}})
+          collection_name.update_one({'_id': ObjectId(id)},  {'$set': {"last_modified": now.strftime("%d/%m/%Y %H:%M:%S")}})
+      except:
+        print(traceback.format_exc())
+        id = None
+        collection_name = None
+
+      # start the analisys in background
+      background_tasks.add_task(main, xml, pre, dataset_start, dataset_finish, configuration_inputs.url, collection_name, id)
+      # send the response to the user
+      if configuration_inputs.id != None:
+        return {"message": "The request has been accepted"}
+      else:
+        return {"message": "The request has been accepted", "id" : id}
+    except Exception as e:
+        print(traceback.format_exc())
+        raise HTTPException(status_code=500, detail="Internal Server Error" + str(e))
+    
+
+
+# Auth model
+class Options(BaseModel):
+    file_url: str = None
+    token: str = None
+    url: Optional[str] = None
+    id: Optional[str] = None
+# api to start a new analisys and save on db the results for both case catalogue and dataset
+# accept only rdf files, as string or by url, or by file in the submit/file api
+# can specify the id of the catalogue or dataset if it was already created before
+# the analisys can be long, so it is sent to the user a message that the request has been accepted and if new analisys it also returns the id of the new catalogue or dataset
+@app.post("/submit/auth")
+async def useCaseConfigurator(options: Options, background_tasks: BackgroundTasks):
+    try:
+        configuration_inputs = options
+    except Exception as e:
+        print(traceback.format_exc())
+        raise HTTPException(status_code=400, detail="Inputs not valid")
+    try:
+      if configuration_inputs.file_url == None:
+        return HTTPException(status_code=400, detail="Inputs not valid")
+      else:
+        
+        url_response = requests.get(configuration_inputs.file_url, headers={"Authorization": "Bearer " + configuration_inputs.token, 'Content-Encoding': 'gzip'})
+
+        
         xml = url_response.text
 
 # sort the datasets and distributions tags to avoid problems with the rdf parser

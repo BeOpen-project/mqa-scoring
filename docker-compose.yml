@@ -15,7 +15,7 @@ services:
       - PORT=8000
 
   mongodb:
-    container_name: mongodb
+    container_name: mongodb-mqa
     image: mongo:4.4
     command: --nojournal
     environment:
