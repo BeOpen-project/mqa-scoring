@@ -24,4 +24,4 @@ ENV PYTHONPATH=$PWD
 ENV PORT=8000
 
 
-CMD [ "python" , "mqa-scoring.py" ]
+CMD [ "python" , "mqa_scoring.py" ]
