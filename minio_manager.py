@@ -4,17 +4,26 @@ import os
 from minio import Minio
 from minio.error import S3Error
 
-def getUserInfo():
-    return None
+MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY")
+MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY")
+MINIO_URL = os.getenv("MINIO_URL")
+
+print(MINIO_URL)
+print(MINIO_ACCESS_KEY)
+print(MINIO_SECRET_KEY)
+
+client = Minio(MINIO_URL,
+        access_key=MINIO_ACCESS_KEY,
+        secret_key=MINIO_SECRET_KEY,
+    )
+
+# def getUserInfo():
+#     return None
 
 # save the file of the analisys in the minio bucket. Bucket -> id(folder) -> date.json (max:5)
 def minio_saveFile(nameFile,jsonFile): # jsonFile is a string with the json
     # Create a client with the MinIO server playground, its access key
     # and secret key.
-    client = Minio("play.min.io",
-        access_key="Q3AM3UQ867SPQQA43P2F",
-        secret_key="zuf+tfteSlswRu7BJ86wekitnifILbZam1KYY3TG",
-    )
 
     # get current date
     now = datetime.now()
@@ -24,8 +33,8 @@ def minio_saveFile(nameFile,jsonFile): # jsonFile is a string with the json
     source_file = "./tmp/" + nameFile + ".json"
 
     # The destination bucket and filename on the MinIO server
-    bucket_name = "asteroid-test"
-    destination_file = nameFile + "/" + dt_string + ".json"
+    bucket_name = "public-data"
+    destination_file = "Metadata quality validator/" + nameFile + "/" + dt_string + ".json"
 
     # Make the bucket if it doesn't exist.
     found = client.bucket_exists(bucket_name)
@@ -67,17 +76,13 @@ def minio_saveFile(nameFile,jsonFile): # jsonFile is a string with the json
 
 # get the last file of the analisys
 def minio_getFile(nameFile):
-    client = Minio("play.min.io",
-        access_key="Q3AM3UQ867SPQQA43P2F",
-        secret_key="zuf+tfteSlswRu7BJ86wekitnifILbZam1KYY3TG",
-    )
     # sort folders by date in name
     objects = minio_listFiles(nameFile)
 
     # get last inserted folder
-    destination_file = nameFile + "/" + objects[-1].object_name + ".json"
+    destination_file = "Metadata quality validator/" + nameFile + "/" + objects[-1].object_name + ".json"
     # The destination bucket on the MinIO server
-    bucket_name = "asteroid-test"
+    bucket_name = "public-data"
     # Download the file
     client.get_object(
         bucket_name, objects[-1].object_name, destination_file,
@@ -89,12 +94,8 @@ def minio_getFile(nameFile):
 
 # list all files in the bucket
 def minio_listAllFiles():
-    client = Minio("play.min.io",
-        access_key="Q3AM3UQ867SPQQA43P2F",
-        secret_key="zuf+tfteSlswRu7BJ86wekitnifILbZam1KYY3TG",
-    )
     # The destination bucket and filename on the MinIO server
-    bucket_name = "asteroid-test"
+    bucket_name = "public-data"
     # List the files
     objects = client.list_objects(bucket_name, recursive=True)
     for obj in objects:
@@ -103,14 +104,10 @@ def minio_listAllFiles():
 
 # list all files in a folder
 def minio_listFiles(folderName):
-    client = Minio("play.min.io",
-        access_key="Q3AM3UQ867SPQQA43P2F",
-        secret_key="zuf+tfteSlswRu7BJ86wekitnifILbZam1KYY3TG",
-    )
     # The destination bucket and filename on the MinIO server
-    bucket_name = "asteroid-test"
+    bucket_name = "public-data"
     # List the files
-    objects = client.list_objects(bucket_name, prefix=folderName, recursive=True)
+    objects = client.list_objects(bucket_name, prefix="Metadata quality validator/" + folderName, recursive=True)
     objects = list(objects)
     objects.sort(key=lambda x: x.last_modified)
     for obj in objects:
@@ -128,7 +125,7 @@ def minio_deleteFile(nameFile,index): # index from 0 to 4
         secret_key="zuf+tfteSlswRu7BJ86wekitnifILbZam1KYY3TG",
     )
     # The destination bucket and filename on the MinIO server
-    bucket_name = "asteroid-test"
+    bucket_name = "public-data"
     # sort folders by date in name
     objects = minio_listFiles(nameFile)
     # get the file to delete
@@ -147,7 +144,7 @@ def minio_delete_LastFile(nameFile):
         secret_key="zuf+tfteSlswRu7BJ86wekitnifILbZam1KYY3TG",
     )
     # The destination bucket and filename on the MinIO server
-    bucket_name = "asteroid-test"
+    bucket_name = "public-data"
     # sort folders by date in name
     objects = minio_listFiles(nameFile)
     # get the file to delete
@@ -161,12 +158,8 @@ def minio_delete_LastFile(nameFile):
 
 # delete folder of all analisys
 def minio_deleteFolder(folderName):
-    client = Minio("play.min.io",
-        access_key="Q3AM3UQ867SPQQA43P2F",
-        secret_key="zuf+tfteSlswRu7BJ86wekitnifILbZam1KYY3TG",
-    )
     # The destination bucket and filename on the MinIO server
-    bucket_name = "asteroid-test"
+    bucket_name = "public-data"
     # list objects in the folder
     objects = minio_listFiles(folderName)
     # delete all objects with remove objects

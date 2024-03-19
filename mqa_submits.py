@@ -189,9 +189,11 @@ async def useCaseConfigurator(options: Options, background_tasks: BackgroundTask
       if configuration_inputs.file_url == None:
         return HTTPException(status_code=400, detail="Inputs not valid")
       else:
-        
-        url_response = requests.get(configuration_inputs.file_url, headers={"Authorization": "Bearer " + configuration_inputs.token, 'Content-Encoding': 'gzip'})
-
+        try:
+          url_response = requests.get(configuration_inputs.file_url, headers={"Authorization": "Bearer " + configuration_inputs.token})
+        except Exception as e:
+            print(traceback.format_exc())
+            raise HTTPException(status_code=401, detail="Authentication error" + str(e))
         
         xml = url_response.text
 
