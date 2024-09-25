@@ -119,11 +119,6 @@ def minio_deleteFile(nameFile,index): # index from 0 to 4
     if index < 0 or index > 4:
         print("index out of range")
         return "index out of range"
-    
-    client = Minio("play.min.io",
-        access_key="Q3AM3UQ867SPQQA43P2F",  
-        secret_key="zuf+tfteSlswRu7BJ86wekitnifILbZam1KYY3TG",
-    )
     # The destination bucket and filename on the MinIO server
     bucket_name = "public-data"
     # sort folders by date in name
@@ -139,10 +134,6 @@ def minio_deleteFile(nameFile,index): # index from 0 to 4
 
 # delete the folder with the file of the last analisys
 def minio_delete_LastFile(nameFile):
-    client = Minio("play.min.io",
-        access_key="Q3AM3UQ867SPQQA43P2F",  
-        secret_key="zuf+tfteSlswRu7BJ86wekitnifILbZam1KYY3TG",
-    )
     # The destination bucket and filename on the MinIO server
     bucket_name = "public-data"
     # sort folders by date in name
