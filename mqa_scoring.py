@@ -32,7 +32,7 @@ app.add_middleware(
 
 # api to get the current version
 @app.get("/version")
-def get_version():
+async def get_version():
   return {"version": "1.3.0"}
 
 # if __name__ == "__main__":

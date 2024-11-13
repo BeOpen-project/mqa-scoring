@@ -338,11 +338,20 @@ async def useCaseConfigurator(background_tasks: BackgroundTasks, file: UploadFil
       test_string = pre + xml[dataset_start[0]:dataset_finish[0]+15] + '</rdf:RDF>'
       dt_copy = xml
 
-      # cut off all the tags on catalogue level, and leave just the tags on dataset level to analyze them separately
-      for index, item in enumerate(dataset_start):
-        dataset_Tag = xml[dataset_start[index]:dataset_finish[index]+15]
-        # create a copy with just the catalogue tags to analyze them separately
-        dt_copy = dt_copy.replace(dataset_Tag, '')
+
+      if xml.rfind('<dcat:Catalog ') != -1:
+        # cut off all the tags on catalogue level, and leave just the tags on dataset level to analyze them separately
+        for index, item in enumerate(dataset_start):
+          dataset_Tag = xml[dataset_start[index]:dataset_finish[index]+15]
+          # create a copy with just the catalogue tags to analyze them separately
+          dt_copy = dt_copy.replace(dataset_Tag, '')
+      else:
+        # cut off all the tags on datasets level, and leave just the tags on distribution level to analyze them separately
+        for index, item in enumerate(dataset_start):
+          distr_tag = xml[distribution_start[index]:distribution_finish[index]+20]
+          # cut off the distribution tag from the dataset string to obtain just the dataset properties to analyze them separately
+          dt_copy = dt_copy.replace(distr_tag, '')
+        dt_copy = dt_copy.replace(dt_copy[dt_copy.rfind('<adms:identifier>'):dt_copy.rfind('</adms:identifier>')+18], '')
         
       try:
         g = Graph()
@@ -410,9 +419,9 @@ async def useCaseConfigurator(background_tasks: BackgroundTasks, file: UploadFil
     except Exception as e:
         print(traceback.format_exc())
         raise HTTPException(status_code=500, detail="Internal Server Error" + str(e))
-  except Exception:
+  except Exception as e:
       print(traceback.format_exc())
-      return {"message": "There was an error uploading the file"}
+      return {"message": "There was an error uploading the file" + str(e)}
   
   
 # main function, 

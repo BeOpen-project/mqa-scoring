@@ -13,7 +13,7 @@ deleteRouter = APIRouter()
 
   # api to delete a catalogue or dataset by id
 @deleteRouter.delete("/element/{id}")
-def delete_analisys(id: str):
+async def delete_analisys(id: str):
 
   # check if id is valid
   if(len(id) != 24):
@@ -43,7 +43,7 @@ class DeleteParameters(BaseModel):
 
   # api to delete a specifyc analisys from history of a catalogue or dataset by id, and by date and if more than one in the same date, by index
 @deleteRouter.delete("/analisys/{id}")
-def delete_analisys_spec(id: str, options: DeleteParameters ):
+async def delete_analisys_spec(id: str, options: DeleteParameters ):
   index = options.index
   date = options.date
 

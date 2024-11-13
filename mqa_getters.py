@@ -13,7 +13,7 @@ getRouter = APIRouter()
 
   # api to get the last results of a catalogue or dataset analisys by id
 @getRouter.get("/analisys/{id}")
-def get_results(id: str):
+async def get_results(id: str):
   if(len(id) != 24):
     return HTTPException(status_code=400, detail="Id not valid")
   try:
@@ -40,7 +40,7 @@ class Parameters(BaseModel):
 # api to get the selected history results of a catalogue or dataset analisys by id and filter the results by parameters
 # if user want to get a specific result, must provide at least start_date
 @getRouter.post("/analisys/{id}")
-def get_results_spec(id: str, options: Parameters ):
+async def get_results_spec(id: str, options: Parameters ):
   parameters = options.parameters
   start_date = options.start_date
   end_date = options.end_date
@@ -195,7 +195,7 @@ def get_results_spec(id: str, options: Parameters ):
   
 #api to get all id's of catalogues and datasets
 @getRouter.get("/all")
-def get_all():
+async def get_all():
   try:
     dbname = get_database()
     collection_name = dbname["mqa"]
