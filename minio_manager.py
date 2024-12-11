@@ -4,18 +4,23 @@ import os
 from minio import Minio
 from minio.error import S3Error
 
-MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY")
-MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY")
-MINIO_URL = os.getenv("MINIO_URL")
+# MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY")
+# MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY")
+# MINIO_URL = os.getenv("MINIO_URL")
+# MINIO_ACTIVE = os.getenv("MINIO_ACTIVE")
 
-print(MINIO_URL)
-print(MINIO_ACCESS_KEY)
-print(MINIO_SECRET_KEY)
+# print(MINIO_URL)
+# print(MINIO_ACCESS_KEY)
+# print(MINIO_SECRET_KEY)
+# print(MINIO_ACTIVE)
 
-client = Minio(MINIO_URL,
-        access_key=MINIO_ACCESS_KEY,
-        secret_key=MINIO_SECRET_KEY,
-    )
+# if(MINIO_ACTIVE == "false"):
+client = None
+# else:
+#     client = Minio( MINIO_URL,
+#         access_key=MINIO_ACCESS_KEY,
+#         secret_key=MINIO_SECRET_KEY,
+#     )
 
 # def getUserInfo():
 #     return None
@@ -36,6 +41,11 @@ def minio_saveFile(nameFile,jsonFile): # jsonFile is a string with the json
     bucket_name = "public-data"
     destination_file = "Metadata quality validator/" + nameFile + "/" + dt_string + ".json"
 
+    # Check if the client is active
+    if client == None:
+        print("Minio is not active")
+        return {"res": "Minio is not active"}
+    
     # Make the bucket if it doesn't exist.
     found = client.bucket_exists(bucket_name)
     if not found:
@@ -83,6 +93,12 @@ def minio_getFile(nameFile):
     destination_file = "Metadata quality validator/" + nameFile + "/" + objects[-1].object_name + ".json"
     # The destination bucket on the MinIO server
     bucket_name = "public-data"
+
+    # Check if the client is active
+    if client == None:
+        print("Minio is not active")
+        return {"res": "Minio is not active"}
+    
     # Download the file
     client.get_object(
         bucket_name, objects[-1].object_name, destination_file,
@@ -96,6 +112,12 @@ def minio_getFile(nameFile):
 def minio_listAllFiles():
     # The destination bucket and filename on the MinIO server
     bucket_name = "public-data"
+
+    # Check if the client is active
+    if client == None:
+        print("Minio is not active")
+        return {"res": "Minio is not active"}
+    
     # List the files
     objects = client.list_objects(bucket_name, recursive=True)
     for obj in objects:
@@ -106,6 +128,12 @@ def minio_listAllFiles():
 def minio_listFiles(folderName):
     # The destination bucket and filename on the MinIO server
     bucket_name = "public-data"
+    
+    # Check if the client is active
+    if client == None:
+        print("Minio is not active")
+        return {"res": "Minio is not active"}
+    
     # List the files
     objects = client.list_objects(bucket_name, prefix="Metadata quality validator/" + folderName, recursive=True)
     objects = list(objects)
@@ -125,6 +153,12 @@ def minio_deleteFile(nameFile,index): # index from 0 to 4
     objects = minio_listFiles(nameFile)
     # get the file to delete
     destination_file = objects[index].object_name
+    
+    # Check if the client is active
+    if client == None:
+        print("Minio is not active")
+        return {"res": "Minio is not active"}
+    
     # Delete the file
     client.remove_object(bucket_name, destination_file)
     print(
@@ -140,6 +174,12 @@ def minio_delete_LastFile(nameFile):
     objects = minio_listFiles(nameFile)
     # get the file to delete
     destination_file = objects[len(objects) - 1].object_name
+    
+    # Check if the client is active
+    if client == None:
+        print("Minio is not active")
+        return {"res": "Minio is not active"}
+    
     # Delete the file
     client.remove_object(bucket_name, destination_file)
     print(
@@ -153,6 +193,12 @@ def minio_deleteFolder(folderName):
     bucket_name = "public-data"
     # list objects in the folder
     objects = minio_listFiles(folderName)
+    
+    # Check if the client is active
+    if client == None:
+        print("Minio is not active")
+        return {"res": "Minio is not active"}
+    
     # delete all objects with remove objects
     for obj in objects:
         client.remove_object(bucket_name, obj.object_name)

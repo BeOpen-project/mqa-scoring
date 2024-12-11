@@ -23,7 +23,6 @@ MEDIATYPE_FILE_MODEL = os.path.join('edp-vocabularies', 'edp-mediatype-model.csv
 MEDIATYPE_FILE_MULTIPART = os.path.join('edp-vocabularies', 'edp-mediatype-multipart.csv')
 MEDIATYPE_FILE_TEXT = os.path.join('edp-vocabularies', 'edp-mediatype-text.csv')
 MEDIATYPE_FILE_VIDEO = os.path.join('edp-vocabularies', 'edp-mediatype-video.csv')
-MEDIATYPE_FILE_VIDEO = os.path.join('edp-vocabularies', 'edp-mediatype-video.csv')
 
 
 # converts the metric to a string containing just the name of the metric, ex: dct:title
@@ -42,7 +41,7 @@ def load_edp_vocabulary(file, format):
   g.parse(file, format=format)
   voc = []
   for sub, pred, obj in g:
-    voc.append(str(sub))
+    voc.append(str(obj))
   return voc
 
 # check if the response of edp validator contains the property "shacl:conforms" and return the value
@@ -62,12 +61,30 @@ def edp_validator(file: str):
     r_edp = requests.post(URL_EDP, data=bytes(file, 'utf-8'), headers=HEADERS)
     r_edp.raise_for_status()
   except requests.exceptions.HTTPError as err:
-    print(traceback.format_exc())
+    # print(traceback.format_exc())
     raise SystemExit(err)
   report = json.loads(r_edp.text)
   if valResult(report):
     check = True
   return check
+
+def checkVocabulary(obj, file):
+  print(obj)
+  found = False
+  try:
+    with open(file, 'rt', encoding="utf8") as f:
+      reader = csv.reader(f, delimiter=',')
+      for row in reader:
+        for field in row:
+          if obj in field:
+            found = True
+            break
+        if found == True:
+          break
+  except:
+    print(traceback.format_exc())
+  return found
+
 
 # create object and add attributes to avoid some properties are missing
 def prepareResponse():
@@ -93,26 +110,12 @@ def prepareResponse():
   return response
 
 def distribution_calc(str):
-  mach_read_voc = []
-  non_prop_voc = []
-  license_voc = []
   
   # distribution object
   response = prepareResponse()
 
   g = Graph()
   g.parse(data = str)
-  
-  # load the vocabulary
-  try:
-    mach_read_voc = load_edp_vocabulary(MACH_READ_FILE,"application/rdf+xml")
-    non_prop_voc = load_edp_vocabulary(NON_PROP_FILE,"application/rdf+xml")
-    license_voc = load_edp_vocabulary(LICENSE_FILE,"application/rdf+xml")
-  except:
-    print(traceback.format_exc())
-    mach_read_voc = '-1'
-    non_prop_voc = '-1'
-    license_voc = '-1'
 
   accessURL_List = []
   downloadURLResponseCode_List = []
@@ -133,7 +136,7 @@ def distribution_calc(str):
         res = requests.get(obj)
         accessURL_List.append(res.status_code)
       except:
-        print(traceback.format_exc())
+        # print(traceback.format_exc())
         accessURL_List.append(400)
 
     elif met == "dcat:downloadURL":
@@ -142,24 +145,13 @@ def distribution_calc(str):
         res = requests.get(obj)
         downloadURLResponseCode_List.append(res.status_code)
       except:
-        print(traceback.format_exc())
+        # print(traceback.format_exc())
         downloadURLResponseCode_List.append(400)
     # in catalogue formats the property dct:MediaTypeOrExtent is inside an empty dct:format tag. The empty tag must be skipped and not counted
     elif (met == "dct:format" and obj != '' and obj != None) or met == "dct:MediaTypeOrExtent":
       response.format = True
-      try:
-        if (obj) in mach_read_voc:
-          response.formatMachineReadable = True
-        else:
-          response.formatMachineReadable = False
-        if (obj) in non_prop_voc:
-          response.formatNonProprietary = True
-        else:
-          response.formatNonProprietary = False
-      except:
-        print(traceback.format_exc())
-        response.formatMachineReadable = False
-        response.formatNonProprietary = False
+      response.formatMachineReadable = checkVocabulary(obj, MACH_READ_FILE)
+      response.formatNonProprietary = checkVocabulary(obj, NON_PROP_FILE)
       try:
         g2 = Graph()
         g2.parse(obj, format="application/rdf+xml")
@@ -168,26 +160,19 @@ def distribution_calc(str):
         else:
           dctFormat_dcatMediaType_List.append(False)
       except:
-        print(traceback.format_exc())
+        # print(traceback.format_exc())
         dctFormat_dcatMediaType_List.append(False)
 
-    elif met == "dct:license":
+    elif (met == "dct:license" and obj != "" and obj != None ) or met == "dct:LicenseDocument":
       response.license = True
-      try:
-        if (obj) in license_voc:
-          response.licenseVocabulary = True
-        else:
-          response.licenseVocabulary = False
-      except:
-        print(traceback.format_exc())
-        response.licenseVocabulary = False
+      response.licenseVocabulary = checkVocabulary(obj, LICENSE_FILE)
 
     elif met == "dcat:mediaType":
       response.mediaType = True
       try:
-        # removes the prefix from the url to check if it is in the vocabulary
-        mediatype = obj.replace('http://www.iana.org/assignments/media-types/','')
-        mediatype = mediatype.replace('https://www.iana.org/assignments/media-types/','')
+        # removes the prefix from the url to check if it is in the vocabulary 
+        # takes the last part of the url after the last / to check if it is in the vocabulary 
+        mediatype = obj.split('/')[-1]
         found = False
         try:
           vocabularies = [MEDIATYPE_FILE_APPLICATION, MEDIATYPE_FILE_AUDIO, MEDIATYPE_FILE_FONT, MEDIATYPE_FILE_IMAGE, MEDIATYPE_FILE_MESSAGE, MEDIATYPE_FILE_MODEL, MEDIATYPE_FILE_MULTIPART, MEDIATYPE_FILE_TEXT, MEDIATYPE_FILE_VIDEO]
@@ -204,10 +189,10 @@ def distribution_calc(str):
           if found == True:
             dctFormat_dcatMediaType_List.append(True)
         except:
-          print(traceback.format_exc())
+          # print(traceback.format_exc())
           dctFormat_dcatMediaType_List.append(False)
       except:
-        print(traceback.format_exc())
+        # print(traceback.format_exc())
         dctFormat_dcatMediaType_List.append(False)
 
     elif met == "dct:issued":
@@ -253,7 +238,6 @@ def dataset_calc(dataset_str, pre):
   response = Object()
   response.distributions = []
 
-  accessRights_voc = []
   dt_copy = dataset_str
   # cut off all the tags on datasets level, and leave just the tags on distribution level to analyze them separately
   distribution_start = [m.start() for m in re.finditer('(?=<dcat:distribution>)', dataset_str)]
@@ -297,12 +281,6 @@ def dataset_calc(dataset_str, pre):
     response.mediaType = 0
     response.rights = 0
     response.byteSize = 0
-
-    try:
-      accessRights_voc = load_edp_vocabulary(ACCESSRIGHTS_FILE,"application/rdf+xml")
-    except:
-      print(traceback.format_exc())
-      accessRights_voc = '-1'
       
     try:
       res = edp_validator(dataset_str)
@@ -311,7 +289,7 @@ def dataset_calc(dataset_str, pre):
       else:
         response.shacl_validation = False
     except:
-      print(traceback.format_exc())
+      # print(traceback.format_exc())
       response.shacl_validation = 0
 
 
@@ -353,14 +331,7 @@ def dataset_calc(dataset_str, pre):
 
       elif met == "dct:accessRights":
         response.accessRights = True
-        try:
-          if str(obj) in accessRights_voc:
-            response.accessRightsVocabulary = True
-          else:
-            response.accessRightsVocabulary = False
-        except:
-            print(traceback.format_exc())
-            response.accessRightsVocabulary = False
+        response.accessRightsVocabulary = checkVocabulary(obj, ACCESSRIGHTS_FILE)
   
     tempArrayDownloadUrl = []
     tempArrayAccessUrl = []
