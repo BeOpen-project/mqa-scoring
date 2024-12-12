@@ -4,23 +4,23 @@ import os
 from minio import Minio
 from minio.error import S3Error
 
-# MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY")
-# MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY")
-# MINIO_URL = os.getenv("MINIO_URL")
-# MINIO_ACTIVE = os.getenv("MINIO_ACTIVE")
+MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY")
+MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY")
+MINIO_URL = os.getenv("MINIO_URL")
+MINIO_ACTIVE = os.getenv("MINIO_ACTIVE")
 
 # print(MINIO_URL)
 # print(MINIO_ACCESS_KEY)
 # print(MINIO_SECRET_KEY)
 # print(MINIO_ACTIVE)
 
-# if(MINIO_ACTIVE == "false"):
-client = None
-# else:
-#     client = Minio( MINIO_URL,
-#         access_key=MINIO_ACCESS_KEY,
-#         secret_key=MINIO_SECRET_KEY,
-#     )
+if(MINIO_ACTIVE == "false"):
+    client = None
+else:
+    client = Minio( MINIO_URL,
+        access_key=MINIO_ACCESS_KEY,
+        secret_key=MINIO_SECRET_KEY,
+    )
 
 # def getUserInfo():
 #     return None
