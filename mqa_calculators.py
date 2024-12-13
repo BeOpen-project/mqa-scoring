@@ -69,7 +69,6 @@ def edp_validator(file: str):
   return check
 
 def checkVocabulary(obj, file):
-  print(obj)
   found = False
   try:
     with open(file, 'rt', encoding="utf8") as f:
@@ -82,7 +81,8 @@ def checkVocabulary(obj, file):
         if found == True:
           break
   except:
-    print(traceback.format_exc())
+    return False
+    # print(traceback.format_exc())
   return found
 
 

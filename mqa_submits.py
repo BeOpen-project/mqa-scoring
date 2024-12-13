@@ -18,6 +18,7 @@ import requests
 from pymongo_get_database import get_database
 from mqa_calculators import *
 from minio_manager import *
+import aiohttp
 
 submitRouter = APIRouter()
 
@@ -60,8 +61,11 @@ async def useCaseConfigurator(options: Options, background_tasks: BackgroundTask
       elif configuration_inputs.xml != None:
         xml = configuration_inputs.xml
       else:
-        url_response = requests.get(configuration_inputs.file_url)
-        xml = url_response.text
+        async with aiohttp.ClientSession() as session:
+            async with session.get(configuration_inputs.file_url) as response:
+                if response.status != 200:
+                    raise HTTPException(status_code=400, detail="Failed to fetch file from URL")
+                xml = await response.text()
 
 # sort the datasets and distributions tags to avoid problems with the rdf parser
       dataset_start = [m.start() for m in re.finditer('(?=<dcat:Dataset)', xml)]
@@ -189,13 +193,15 @@ async def useCaseConfigurator(options: Options, background_tasks: BackgroundTask
       if configuration_inputs.file_url == None:
         return HTTPException(status_code=400, detail="Inputs not valid")
       else:
-        try:
-          url_response = requests.get(configuration_inputs.file_url, headers={"Authorization": "Bearer " + configuration_inputs.token})
-        except Exception as e:
+        async with aiohttp.ClientSession(headers={"Authorization": f"Bearer {configuration_inputs.token}"}) as session:
+          try:
+            async with session.get(configuration_inputs.file_url) as response:
+              if response.status != 200:
+                raise HTTPException(status_code=401, detail="Authentication error")
+              xml = await response.text()
+          except Exception as e:
             print(traceback.format_exc())
             raise HTTPException(status_code=401, detail="Authentication error" + str(e))
-        
-        xml = url_response.text
 
 # sort the datasets and distributions tags to avoid problems with the rdf parser
       dataset_start = [m.start() for m in re.finditer('(?=<dcat:Dataset)', xml)]
@@ -425,7 +431,7 @@ async def useCaseConfigurator(background_tasks: BackgroundTasks, file: UploadFil
   
   
 # main function, 
-def main(xml, pre, dataset_start, dataset_finish, url, collection_name, id):
+async def main(xml, pre, dataset_start, dataset_finish, url, collection_name, id):
 
 # if the file is a catalogue, it needs to be analyzed on catalogue level, otherwise it needs to be analyzed just on dataset level
   if xml.rfind('<dcat:Catalog ') != -1:
@@ -649,7 +655,10 @@ def main(xml, pre, dataset_start, dataset_finish, url, collection_name, id):
   if url != None:
     # print("Sending request to", url)
     
-    res = requests.post(url, json.dumps(response, indent=4, cls=EmployeeEncoder))
+    async with aiohttp.ClientSession() as session:
+      async with session.post(url, json=json.dumps(response, indent=4, cls=EmployeeEncoder)) as res:
+        # print("Status Code", res.status)
+        return res
     
     # print("Status Code", res.status_code)
     return res
