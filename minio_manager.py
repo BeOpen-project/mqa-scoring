@@ -7,7 +7,8 @@ from minio.error import S3Error
 MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY")
 MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY")
 MINIO_URL = os.getenv("MINIO_URL")
-MINIO_ACTIVE = os.getenv("MINIO_ACTIVE")
+MINIO_ACTIVE = os.getenv("MINIO_ACTIVE", "true").lower()
+MINIO_SECURE = os.getenv("MINIO_SECURE", "false").lower() == "true"
 
 # print(MINIO_URL)
 # print(MINIO_ACCESS_KEY)
@@ -20,6 +21,7 @@ else:
     client = Minio( MINIO_URL,
         access_key=MINIO_ACCESS_KEY,
         secret_key=MINIO_SECRET_KEY,
+        secure=MINIO_SECURE,
     )
 
 # def getUserInfo():
